@@ -1,0 +1,224 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'gianpasquinelli19@gmail.com';
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isBootstrappedAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin')
+      );
+    }
+
+    function isTeacher() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'teacher')
+      );
+    }
+
+    function isTeacherForRoom(roomId) {
+      return isAdmin() || (
+        isTeacher() && (
+          !('assignedRoomIds' in getUserData()) ||
+          getUserData().assignedRoomIds == null ||
+          roomId in getUserData().assignedRoomIds
+        )
+      );
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isSignedIn() && (isAdmin() || isSelf(userId) || isTeacher());
+      allow create: if isSignedIn() && (
+        isAdmin() || 
+        (isSelf(userId) && (!request.resource.data.keys().hasAny(['role']) || request.resource.data.role != 'admin')) ||
+        (isSelf(userId) && isBootstrappedAdmin())
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (isSelf(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isActive']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Children Collection
+    match /children/{childId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        (isTeacher() && isTeacherForRoom(resource.data.roomId)) || 
+        (resource.data.authorizedParentIds != null && request.auth.uid in resource.data.authorizedParentIds)
+      );
+      allow create: if isAdmin() || (isTeacher() && isTeacherForRoom(request.resource.data.roomId));
+      allow delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isTeacher() && 
+        isTeacherForRoom(resource.data.roomId) && 
+        isTeacherForRoom(request.resource.data.roomId)
+      ) || (
+        isSignedIn() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authorizedParentIds', 'updatedAt'])
+      );
+    }
+
+    // Families Collection
+    match /families/{familyId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        isTeacher() || 
+        (resource.data.guardianUserIds != null && request.auth.uid in resource.data.guardianUserIds)
+      );
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Rooms Collection
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Attendance Collection
+    match /attendance/{attendanceId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        (isTeacher() && isTeacherForRoom(resource.data.roomId)) || 
+        (exists(/databases/$(database)/documents/children/$(resource.data.childId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/children/$(resource.data.childId)).data.authorizedParentIds)
+      );
+      allow create: if isAdmin() || (isTeacher() && isTeacherForRoom(request.resource.data.roomId));
+      allow update: if isAdmin() || (isTeacher() && isTeacherForRoom(resource.data.roomId));
+      allow delete: if isAdmin();
+    }
+
+    // Activities & Events Collection
+    match /activities/{activityId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() || (
+        isTeacher() && (
+          !('roomId' in request.resource.data) || 
+          request.resource.data.roomId == null || 
+          isTeacherForRoom(request.resource.data.roomId)
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Internal Notifications Collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || isTeacher();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    // Progress Reports Collection
+    match /progressReports/{reportId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        (isTeacher() && isTeacherForRoom(resource.data.roomId)) || 
+        (exists(/databases/$(database)/documents/children/$(resource.data.childId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/children/$(resource.data.childId)).data.authorizedParentIds)
+      );
+      allow create: if isAdmin() || (isTeacher() && isTeacherForRoom(request.resource.data.roomId));
+      allow update: if isAdmin() || (isTeacher() && isTeacherForRoom(resource.data.roomId));
+      allow delete: if isAdmin();
+    }
+
+    // Announcements Collection
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() || (
+        isTeacher() && (
+          !('roomId' in request.resource.data) || 
+          request.resource.data.roomId == null || 
+          isTeacherForRoom(request.resource.data.roomId)
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Audit Logs Collection (Immutable records)
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // strictly immutable
+    }
+
+    // Enrollment Codes Collection for family-child linking
+    match /enrollmentCodes/{codeId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isSignedIn();
+    }
+
+    // Fees Collection (Cuotas)
+    match /fees/{feeId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/children/$(resource.data.childId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/children/$(resource.data.childId)).data.authorizedParentIds)
+      );
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        exists(/databases/$(database)/documents/children/$(resource.data.childId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/children/$(resource.data.childId)).data.authorizedParentIds &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'paymentMethod', 'paymentId']) &&
+        request.resource.data.status in ['in_review']
+      );
+    }
+
+    // Payments Collection (Comprobantes y Transacciones)
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        request.auth.uid == resource.data.payerUserId ||
+        (exists(/databases/$(database)/documents/children/$(resource.data.childId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/children/$(resource.data.childId)).data.authorizedParentIds)
+      );
+      allow create: if isSignedIn() && (
+        isAdmin() || 
+        (
+          request.auth.uid == request.resource.data.payerUserId &&
+          exists(/databases/$(database)/documents/children/$(request.resource.data.childId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/children/$(request.resource.data.childId)).data.authorizedParentIds &&
+          request.resource.data.status in ['pending', 'in_process']
+        )
+      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Test connection doc
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+  }
+}

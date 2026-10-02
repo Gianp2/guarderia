@@ -1,0 +1,315 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile with role-based access control for administrative staff, teachers, and parents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "teacher", "parent"] },
+        "isActive": { "type": "boolean" },
+        "phone": { "type": "string", "maxLength": 32 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "assignedRoomIds": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
+      },
+      "required": ["id", "email", "displayName", "role", "isActive"]
+    },
+    "children": {
+      "title": "Child",
+      "description": "Enrolled child record in the nursery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "firstName": { "type": "string", "maxLength": 64 },
+        "lastName": { "type": "string", "maxLength": 64 },
+        "birthDate": { "type": "string", "maxLength": 32 },
+        "roomId": { "type": "string", "maxLength": 128 },
+        "roomName": { "type": "string", "maxLength": 64 },
+        "enrollmentStatus": { "type": "string", "enum": ["active", "inactive", "pending"] },
+        "enrollmentDate": { "type": "string", "maxLength": 32 },
+        "authorizedParentIds": { "type": "array" },
+        "familyId": { "type": "string", "maxLength": 128 },
+        "allergies": { "type": "string", "maxLength": 256 },
+        "dietaryNotes": { "type": "string", "maxLength": 256 },
+        "medicalNotes": { "type": "string", "maxLength": 512 },
+        "emergencyContact": { "type": "string", "maxLength": 256 },
+        "administrativeNotes": { "type": "string", "maxLength": 1024 },
+        "photoUrl": { "type": "string", "maxLength": 512 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "firstName", "lastName", "birthDate", "roomId", "enrollmentStatus"]
+    },
+    "families": {
+      "title": "Family",
+      "description": "Family and guardian relationships with children",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "familyName": { "type": "string", "maxLength": 128 },
+        "primaryGuardianName": { "type": "string", "maxLength": 128 },
+        "primaryGuardianEmail": { "type": "string", "maxLength": 128 },
+        "primaryGuardianPhone": { "type": "string", "maxLength": 32 },
+        "secondaryGuardianName": { "type": "string", "maxLength": 128 },
+        "secondaryGuardianPhone": { "type": "string", "maxLength": 32 },
+        "guardianUserIds": { "type": "array" },
+        "childIds": { "type": "array" },
+        "address": { "type": "string", "maxLength": 256 },
+        "emergencyContactName": { "type": "string", "maxLength": 128 },
+        "emergencyContactPhone": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "notes": { "type": "string", "maxLength": 512 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "familyName", "primaryGuardianName", "primaryGuardianEmail", "status"]
+    },
+    "rooms": {
+      "title": "Room",
+      "description": "Classrooms and sections of the daycare",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 256 },
+        "ageRange": { "type": "string", "maxLength": 64 },
+        "capacity": { "type": "number" },
+        "color": { "type": "string", "maxLength": 32 },
+        "assignedTeacherIds": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "schedule": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "attendance": {
+      "title": "Attendance",
+      "description": "Daily check-in and check-out tracking for children",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "childId": { "type": "string", "maxLength": 128 },
+        "childName": { "type": "string", "maxLength": 128 },
+        "roomId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["present", "absent", "justified"] },
+        "checkInTime": { "type": "string", "maxLength": 32 },
+        "checkOutTime": { "type": "string", "maxLength": 32 },
+        "notes": { "type": "string", "maxLength": 256 },
+        "recordedByUserId": { "type": "string", "maxLength": 128 },
+        "recordedByName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "childId", "roomId", "date", "status"]
+    },
+    "activities": {
+      "title": "Activity",
+      "description": "Daily pedagogical activities, nap, meal and hygiene logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "category": { "type": "string", "enum": ["activity", "meal", "nap", "hygiene", "milestone", "general"] },
+        "date": { "type": "string", "maxLength": 32 },
+        "time": { "type": "string", "maxLength": 32 },
+        "roomId": { "type": "string", "maxLength": 128 },
+        "childIds": { "type": "array" },
+        "photoUrl": { "type": "string", "maxLength": 512 },
+        "authorUserId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "category", "date", "roomId"]
+    },
+    "progressReports": {
+      "title": "ProgressReport",
+      "description": "Pedagogical milestone observations and developmental progress",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "childId": { "type": "string", "maxLength": 128 },
+        "childName": { "type": "string", "maxLength": 128 },
+        "roomId": { "type": "string", "maxLength": 128 },
+        "period": { "type": "string", "maxLength": 64 },
+        "area": { "type": "string", "enum": ["motor", "language", "social_emotional", "cognitive", "autonomy"] },
+        "title": { "type": "string", "maxLength": 128 },
+        "observation": { "type": "string", "maxLength": 2048 },
+        "strengths": { "type": "string", "maxLength": 512 },
+        "recommendations": { "type": "string", "maxLength": 512 },
+        "authorUserId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "childId", "roomId", "area", "title", "observation"]
+    },
+    "announcements": {
+      "title": "Announcement",
+      "description": "Institutional and classroom news and announcements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "content": { "type": "string", "maxLength": 2048 },
+        "importance": { "type": "string", "enum": ["normal", "important", "urgent"] },
+        "targetAudience": { "type": "string", "enum": ["all", "teachers", "parents"] },
+        "roomId": { "type": "string", "maxLength": 128 },
+        "authorUserId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 128 },
+        "publishDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "importance", "targetAudience", "publishDate"]
+    },
+    "auditLogs": {
+      "title": "AuditLog",
+      "description": "Immutable log of administrative and privileged operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 64 },
+        "entityType": { "type": "string", "maxLength": 64 },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "performedByUserId": { "type": "string", "maxLength": 128 },
+        "performedByUserEmail": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 1024 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "action", "entityType", "performedByUserId", "performedByUserEmail"]
+    },
+    "enrollmentCodes": {
+      "title": "EnrollmentCode",
+      "description": "Secure guardian link codes provided by the nursery to connect children with parents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 64 },
+        "childId": { "type": "string", "maxLength": 128 },
+        "childName": { "type": "string", "maxLength": 128 },
+        "roomId": { "type": "string", "maxLength": 128 },
+        "familyId": { "type": "string", "maxLength": 128 },
+        "isClaimed": { "type": "boolean" },
+        "claimedByUserIds": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "code", "childId", "roomId"]
+    },
+    "fees": {
+      "title": "Fee",
+      "description": "Monthly or periodic tuition fee records for enrolled children",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "childId": { "type": "string", "maxLength": 128 },
+        "childName": { "type": "string", "maxLength": 128 },
+        "familyId": { "type": "string", "maxLength": 128 },
+        "concept": { "type": "string", "maxLength": 256 },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "period": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["pending", "paid", "overdue", "in_review", "cancelled"] },
+        "paidAt": { "type": "string", "maxLength": 64 },
+        "paymentMethod": { "type": "string", "enum": ["mercadopago", "transfer", "cash"] },
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "notes": { "type": "string", "maxLength": 512 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "childId", "concept", "amount", "dueDate", "status"]
+    },
+    "payments": {
+      "title": "Payment",
+      "description": "Payment receipts and transaction records from bank transfers or Mercado Pago",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "feeId": { "type": "string", "maxLength": 128 },
+        "childId": { "type": "string", "maxLength": 128 },
+        "childName": { "type": "string", "maxLength": 128 },
+        "payerUserId": { "type": "string", "maxLength": 128 },
+        "payerName": { "type": "string", "maxLength": 128 },
+        "payerEmail": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["mercadopago", "transfer", "cash"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "in_process"] },
+        "transferReceiptUrl": { "type": "string", "maxLength": 2097152 },
+        "transferReceiptType": { "type": "string", "maxLength": 32 },
+        "transferReceiptName": { "type": "string", "maxLength": 256 },
+        "transferNotes": { "type": "string", "maxLength": 512 },
+        "reviewedByUserId": { "type": "string", "maxLength": 128 },
+        "reviewedByName": { "type": "string", "maxLength": 128 },
+        "reviewedAt": { "type": "string", "maxLength": 64 },
+        "rejectionReason": { "type": "string", "maxLength": 512 },
+        "mpPreferenceId": { "type": "string", "maxLength": 128 },
+        "mpPaymentId": { "type": "string", "maxLength": 128 },
+        "mpStatus": { "type": "string", "maxLength": 64 },
+        "mpStatusDetail": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "feeId", "childId", "amount", "method", "status", "payerUserId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profiles and system accounts"
+    },
+    "/children/{childId}": {
+      "schema": "children",
+      "description": "Child enrollment records and pedagogical information"
+    },
+    "/families/{familyId}": {
+      "schema": "families",
+      "description": "Family and guardian link records"
+    },
+    "/rooms/{roomId}": {
+      "schema": "rooms",
+      "description": "Classrooms and nursery sections"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "attendance",
+      "description": "Daily attendance records for enrolled children"
+    },
+    "/activities/{activityId}": {
+      "schema": "activities",
+      "description": "Daily pedagogical and routine logs"
+    },
+    "/progressReports/{reportId}": {
+      "schema": "progressReports",
+      "description": "Pedagogical milestone reports and developmental observations"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "announcements",
+      "description": "Institutional and classroom news and announcements"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "auditLogs",
+      "description": "Administrative audit trail of privileged actions"
+    },
+    "/enrollmentCodes/{codeId}": {
+      "schema": "enrollmentCodes",
+      "description": "Official verification codes for family-child association"
+    },
+    "/fees/{feeId}": {
+      "schema": "fees",
+      "description": "Monthly fee schedules, debts and amounts"
+    },
+    "/payments/{paymentId}": {
+      "schema": "payments",
+      "description": "Transfer receipts and verified Mercado Pago payments"
+    }
+  }
+}

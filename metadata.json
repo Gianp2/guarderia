@@ -1,0 +1,6 @@
+{
+  "name": "Nido Cuidado - Gestión de Guardería Infantil",
+  "description": "Plataforma privada integral para guarderías infantiles con gestión de alumnos, familias, salas, asistencia, bitácora pedagógica, cuotas y pagos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
