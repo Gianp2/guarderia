@@ -12,12 +12,14 @@ import {
   Users
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { validateAndLinkChildCode } from '../../services/enrollmentService';
 import { INITIAL_CHILDREN } from '../../services/seedData';
 
 export const LinkChildPage: React.FC = () => {
   const navigate = useNavigate();
   const { userProfile, updateLinkedChild } = useAuth();
+  const toast = useToast();
   
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,10 +48,16 @@ export const LinkChildPage: React.FC = () => {
     if (result.success && result.child) {
       // Check if already in linkedIds
       if (linkedIds.includes(result.child.id)) {
-        setError(`El alumno ${result.child.firstName} ${result.child.lastName} ya está vinculado a su cuenta familiar.`);
+        const msg = `El alumno ${result.child.firstName} ${result.child.lastName} ya está vinculado a su cuenta familiar.`;
+        setError(msg);
+        toast.warning('Alumno ya vinculado', msg);
         return;
       }
       setSuccessChild(result.child);
+      toast.success(
+        '¡Vinculación exitosa!', 
+        `${result.child.firstName} ${result.child.lastName} vinculado a tu cuenta familiar.`
+      );
       if (updateLinkedChild) {
         updateLinkedChild(result.child.id);
       }
@@ -57,7 +65,9 @@ export const LinkChildPage: React.FC = () => {
         navigate('/familia');
       }, 1500);
     } else {
-      setError(result.message || 'Código incorrecto. Verifique con la secretaría de la guardería.');
+      const err = result.message || 'Código incorrecto. Verifique con la secretaría de la guardería.';
+      setError(err);
+      toast.error('Error de vinculación', err);
     }
   };
 

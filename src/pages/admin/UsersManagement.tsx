@@ -18,10 +18,12 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { UserProfile, UserRole } from '../../types';
 import { INITIAL_USERS } from '../../services/seedData';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const UsersManagement: React.FC = () => {
+  const toast = useToast();
   const [users, setUsers] = useState<UserProfile[]>(INITIAL_USERS);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -61,6 +63,10 @@ export const UsersManagement: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
     setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
+    toast.info(
+      updated.isActive ? 'Usuario activado' : 'Usuario desactivado',
+      `El acceso para ${user.displayName} (${user.email}) ha sido ${updated.isActive ? 'habilitado' : 'suspendido'}`
+    );
     try {
       await setDoc(doc(db, 'users', user.id), updated);
     } catch (err) {
@@ -85,6 +91,15 @@ export const UsersManagement: React.FC = () => {
     };
 
     setUsers(prev => [newRecord, ...prev]);
+
+    const roleName = 
+      newRecord.role === 'admin' ? 'Administrador' :
+      newRecord.role === 'teacher' ? 'Docente' : 'Familiar';
+
+    toast.success(
+      'Usuario registrado',
+      `Cuenta para ${newRecord.displayName} con rol de ${roleName} creada correctamente`
+    );
 
     try {
       await setDoc(doc(db, 'users', id), newRecord);

@@ -24,11 +24,13 @@ import { db, auth } from '../../services/firebase/config';
 import { Activity, ActivityCategory, Child, Room } from '../../types';
 import { INITIAL_ACTIVITIES, INITIAL_CHILDREN, INITIAL_ROOMS } from '../../services/seedData';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const ActivitiesPage: React.FC = () => {
   const { role, userProfile } = useAuth();
+  const toast = useToast();
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
   const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
@@ -122,11 +124,13 @@ export const ActivitiesPage: React.FC = () => {
 
   const handleDeleteActivity = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const actToDelete = activities.find(a => a.id === id);
     if (!confirm('¿Confirma que desea eliminar esta actividad?')) return;
     setActivities(prev => prev.filter(a => a.id !== id));
     if (selectedCardActivity?.id === id) {
       setSelectedCardActivity(null);
     }
+    toast.info('Actividad eliminada', actToDelete ? `"${actToDelete.title}" fue eliminada del registro` : 'El registro ha sido eliminado');
     try {
       await deleteDoc(doc(db, 'activities', id));
     } catch (err) {
@@ -163,6 +167,8 @@ export const ActivitiesPage: React.FC = () => {
         setSelectedCardActivity(updatedRecord);
       }
 
+      toast.success('Actividad actualizada', `"${updatedRecord.title}" modificada con éxito`);
+
       try {
         await setDoc(doc(db, 'activities', editingActivity.id), updatedRecord, { merge: true });
       } catch (err) {
@@ -187,6 +193,8 @@ export const ActivitiesPage: React.FC = () => {
       };
 
       setActivities(prev => [newRecord, ...prev]);
+
+      toast.success('Actividad registrada', `"${newRecord.title}" guardada para ${newRecord.roomName}`);
 
       try {
         await setDoc(doc(db, 'activities', id), newRecord);
@@ -563,7 +571,7 @@ export const ActivitiesPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
                 <span className="text-gray-400 block mb-0.5">Fecha y Horario</span>
                 <span className="font-bold text-[#1B4332]">{selectedCardActivity.date} - {selectedCardActivity.time || '10:00'} hs</span>

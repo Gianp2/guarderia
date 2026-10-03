@@ -33,12 +33,14 @@ import {
   INITIAL_ROOMS
 } from '../../services/seedData';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const ChildProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { role, userProfile } = useAuth();
+  const toast = useToast();
   
   const [child, setChild] = useState<Child | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -147,6 +149,10 @@ export const ChildProfilePage: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
     setChild(updated);
+    toast.success(
+      'Expediente actualizado',
+      `Ficha médica y datos personales de ${updated.firstName} guardados correctamente`
+    );
     try {
       await setDoc(doc(db, 'children', child.id), updated, { merge: true });
     } catch (err) {
@@ -237,6 +243,11 @@ export const ChildProfilePage: React.FC = () => {
       }
     }
 
+    toast.success(
+      editingReportId ? 'Informe pedagógico actualizado' : 'Informe pedagógico guardado',
+      `"${reportForm.title}" registrado para ${child.firstName}`
+    );
+
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
@@ -272,6 +283,7 @@ export const ChildProfilePage: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
     setActivities(prev => prev.map(a => a.id === editingActivity.id ? updated : a));
+    toast.success('Actividad actualizada', `"${updated.title}" modificada correctamente`);
     try {
       await setDoc(doc(db, 'activities', editingActivity.id), updated, { merge: true });
     } catch (err) {
@@ -310,6 +322,10 @@ export const ChildProfilePage: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
     setAttendance(prev => prev.map(a => a.id === editingAttendance.id ? updated : a));
+    const statusLabel = 
+      updated.status === 'present' ? 'Presente' :
+      updated.status === 'absent' ? 'Ausente' : 'Justificado';
+    toast.success('Asistencia actualizada', `${child?.firstName || 'Alumno'} marcado como ${statusLabel}`);
     try {
       await setDoc(doc(db, 'attendance', editingAttendance.id), updated, { merge: true });
     } catch (err) {
@@ -480,7 +496,7 @@ export const ChildProfilePage: React.FC = () => {
                         <h4 className="text-sm font-bold text-[#1B4332] mb-1">{act.title}</h4>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-line">{act.description}</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
                           <span className="text-gray-400 block mb-0.5">Horario</span>
                           <span className="font-bold text-[#1B4332]">{act.time} hs</span>
@@ -1173,15 +1189,17 @@ export const ChildProfilePage: React.FC = () => {
         subtitle={selectedDetail?.subtitle}
         maxWidth="md"
       >
-        {selectedDetail?.content}
-        <div className="flex justify-end pt-3 border-t border-gray-100 mt-4">
-          <button
-            type="button"
-            onClick={() => setSelectedDetail(null)}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer"
-          >
-            Cerrar Detalle
-          </button>
+        <div className="space-y-4">
+          {selectedDetail?.content}
+          <div className="flex justify-end pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setSelectedDetail(null)}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-95 transition-all"
+            >
+              Cerrar Detalle
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

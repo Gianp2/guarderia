@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase/config';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { 
   Fee, 
   Payment, 
@@ -27,6 +28,7 @@ import {
   verifyServerPayment,
   MPStatusResponse 
 } from '../../services/mercadoPagoService';
+import { Modal } from '../../components/common/Modal';
 import { 
   CreditCard, 
   DollarSign, 
@@ -51,6 +53,7 @@ import {
 
 export function FeesManagement() {
   const { userProfile } = useAuth();
+  const toast = useToast();
   const [fees, setFees] = useState<Fee[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [children, setChildren] = useState<Child[]>([]);
@@ -104,11 +107,12 @@ export function FeesManagement() {
     notes: 'Jornada habitual'
   });
 
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
   const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 5000);
+    if (type === 'success') {
+      toast.success('Gestión de Cuotas', message);
+    } else {
+      toast.error('Gestión de Cuotas', message);
+    }
   };
 
   // Load Realtime Data
@@ -363,20 +367,6 @@ export function FeesManagement() {
 
   return (
     <div className="space-y-8 animate-page-enter">
-      {/* Toast Notification */}
-      {notification && (
-        <div 
-          className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-xl border text-sm font-medium flex items-center gap-3 transition-all duration-200 ${
-            notification.type === 'success' 
-              ? 'bg-emerald-600 text-white border-emerald-700' 
-              : 'bg-red-600 text-white border-red-700'
-          }`}
-        >
-          {notification.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <span>{notification.message}</span>
-        </div>
-      )}
-
       {/* Header & Quick Action Buttons */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -741,111 +731,100 @@ export function FeesManagement() {
       </div>
 
       {/* MODAL 1: REVISIÓN DE COMPROBANTE DE TRANSFERENCIA */}
-      {isReviewModalOpen && selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl border border-gray-100 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+      <Modal
+        isOpen={isReviewModalOpen && !!selectedPayment}
+        onClose={() => setIsReviewModalOpen(false)}
+        title="Revisar Comprobante de Transferencia"
+        subtitle="Validación administrativa del comprobante bancario antes de aprobar la cuota"
+        maxWidth="2xl"
+      >
+        {selectedPayment && (
+          <div className="space-y-4">
+            {/* Payment Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-[#FAF9F5] p-3.5 rounded-2xl border border-gray-200">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Revisar Comprobante de Transferencia</h3>
-                <p className="text-xs text-gray-500">
-                  Validación administrativa del comprobante bancario antes de aprobar la cuota
-                </p>
+                <span className="text-gray-500 block">Alumno / Sala:</span>
+                <strong className="text-gray-800 text-sm">{selectedPayment.childName}</strong>
               </div>
-              <button 
-                onClick={() => setIsReviewModalOpen(false)}
-                className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div>
+                <span className="text-gray-500 block">Monto a Validar:</span>
+                <strong className="text-emerald-800 text-base font-black">${selectedPayment.amount.toLocaleString('es-AR')}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Tutor que envió:</span>
+                <span className="text-gray-800">{selectedPayment.payerName} ({selectedPayment.payerEmail})</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Fecha de Envío:</span>
+                <span className="text-gray-800">{new Date(selectedPayment.createdAt).toLocaleString('es-AR')}</span>
+              </div>
+              {selectedPayment.transferBankOrigin && (
+                <div>
+                  <span className="text-gray-500 block">Banco de Origen:</span>
+                  <span className="text-gray-800">{selectedPayment.transferBankOrigin}</span>
+                </div>
+              )}
+              {selectedPayment.transferNotes && (
+                <div className="sm:col-span-2">
+                  <span className="text-gray-500 block">Notas del Tutor:</span>
+                  <span className="italic text-gray-700">"{selectedPayment.transferNotes}"</span>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-4 overflow-y-auto flex-1 pr-1">
-              {/* Payment Details */}
-              <div className="grid grid-cols-2 gap-3 text-xs bg-[#FAF9F5] p-3.5 rounded-2xl border border-gray-200">
-                <div>
-                  <span className="text-gray-500 block">Alumno / Sala:</span>
-                  <strong className="text-gray-800 text-sm">{selectedPayment.childName}</strong>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Monto a Validar:</span>
-                  <strong className="text-emerald-800 text-base font-black">${selectedPayment.amount.toLocaleString('es-AR')}</strong>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Tutor que envió:</span>
-                  <span className="text-gray-800">{selectedPayment.payerName} ({selectedPayment.payerEmail})</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Fecha de Envío:</span>
-                  <span className="text-gray-800">{new Date(selectedPayment.createdAt).toLocaleString('es-AR')}</span>
-                </div>
-                {selectedPayment.transferBankOrigin && (
-                  <div>
-                    <span className="text-gray-500 block">Banco de Origen:</span>
-                    <span className="text-gray-800">{selectedPayment.transferBankOrigin}</span>
+            {/* Receipt File Preview */}
+            <div>
+              <span className="text-xs font-bold text-gray-700 block mb-1.5">Archivo Comprobante:</span>
+              {selectedPayment.transferReceiptUrl ? (
+                selectedPayment.transferReceiptType === 'pdf' ? (
+                  <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 text-center space-y-2">
+                    <FileText className="w-10 h-10 text-red-600 mx-auto" />
+                    <div className="text-xs font-semibold text-gray-700">{selectedPayment.transferReceiptName || 'Comprobante.pdf'}</div>
+                    <a
+                      href={selectedPayment.transferReceiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-fluid inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#1B4332] text-white"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Abrir Documento PDF
+                    </a>
                   </div>
-                )}
-                {selectedPayment.transferNotes && (
-                  <div className="col-span-2">
-                    <span className="text-gray-500 block">Notas del Tutor:</span>
-                    <span className="italic text-gray-700">"{selectedPayment.transferNotes}"</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Receipt File Preview */}
-              <div>
-                <span className="text-xs font-bold text-gray-700 block mb-1.5">Archivo Comprobante:</span>
-                {selectedPayment.transferReceiptUrl ? (
-                  selectedPayment.transferReceiptType === 'pdf' ? (
-                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 text-center space-y-2">
-                      <FileText className="w-10 h-10 text-red-600 mx-auto" />
-                      <div className="text-xs font-semibold text-gray-700">{selectedPayment.transferReceiptName || 'Comprobante.pdf'}</div>
-                      <a
-                        href={selectedPayment.transferReceiptUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-fluid inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#1B4332] text-white"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" /> Abrir Documento PDF
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl overflow-hidden border border-gray-200 bg-gray-900/5 max-h-[320px] flex items-center justify-center p-2">
-                      <img
-                        src={selectedPayment.transferReceiptUrl}
-                        alt="Comprobante de transferencia"
-                        className="max-h-[300px] w-auto object-contain rounded-lg shadow-xs"
-                      />
-                    </div>
-                  )
                 ) : (
-                  <div className="p-4 rounded-xl bg-gray-100 text-center text-xs text-gray-500">
-                    No se adjuntó archivo visual
+                  <div className="rounded-2xl overflow-hidden border border-gray-200 bg-gray-900/5 max-h-[320px] flex items-center justify-center p-2">
+                    <img
+                      src={selectedPayment.transferReceiptUrl}
+                      alt="Comprobante de transferencia"
+                      className="max-h-[300px] w-auto object-contain rounded-lg shadow-xs"
+                    />
                   </div>
-                )}
-              </div>
-
-              {/* Rejection Reason Input (shown only if rejecting) */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Motivo de Rechazo (Opcional, en caso de no coincidir importe o datos):
-                </label>
-                <input
-                  type="text"
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="Ej: Monto incompleto o no se visualiza la acreditación bancaria..."
-                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm focus:outline-none focus:border-red-500"
-                />
-              </div>
+                )
+              ) : (
+                <div className="p-4 rounded-xl bg-gray-100 text-center text-xs text-gray-500">
+                  No se adjuntó archivo visual
+                </div>
+              )}
             </div>
 
-            <div className="border-t border-gray-100 pt-4 flex items-center justify-between gap-3">
+            {/* Rejection Reason Input (shown only if rejecting) */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Motivo de Rechazo (Opcional, en caso de no coincidir importe o datos):
+              </label>
+              <input
+                type="text"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Ej: Monto incompleto o no se visualiza la acreditación bancaria..."
+                className="w-full p-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            <div className="border-t border-gray-100 pt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => handleReviewAction(false)}
                 disabled={isProcessingReview}
-                className="btn-fluid px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 flex items-center gap-1.5"
+                className="btn-fluid px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <X className="w-4 h-4" />
                 Rechazar Comprobante
@@ -855,359 +834,334 @@ export function FeesManagement() {
                 type="button"
                 onClick={() => handleReviewAction(true)}
                 disabled={isProcessingReview}
-                className="btn-fluid px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-700 text-white hover:bg-emerald-800 shadow-md flex items-center gap-1.5"
+                className="btn-fluid px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-700 text-white hover:bg-emerald-800 shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
                 Aprobar y Confirmar Pago
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* MODAL 2: CREAR CUOTA INDIVIDUAL */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-lg font-bold text-[#1B4332]">Nueva Cuota Individual</h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSingleFee} className="space-y-3.5 text-xs sm:text-sm">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Alumno:</label>
-                <select
-                  required
-                  value={singleFeeData.childId}
-                  onChange={(e) => setSingleFeeData({ ...singleFeeData, childId: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                >
-                  <option value="">Seleccione un alumno...</option>
-                  {children.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.firstName} {c.lastName} ({c.roomName || 'Sala'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Concepto:</label>
-                <input
-                  type="text"
-                  required
-                  value={singleFeeData.concept}
-                  onChange={(e) => setSingleFeeData({ ...singleFeeData, concept: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Importe ($ ARS):</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={singleFeeData.amount}
-                    onChange={(e) => setSingleFeeData({ ...singleFeeData, amount: Number(e.target.value) })}
-                    className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Período (YYYY-MM):</label>
-                  <input
-                    type="text"
-                    required
-                    value={singleFeeData.period}
-                    onChange={(e) => setSingleFeeData({ ...singleFeeData, period: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Fecha de Vencimiento:</label>
-                <input
-                  type="date"
-                  required
-                  value={singleFeeData.dueDate}
-                  onChange={(e) => setSingleFeeData({ ...singleFeeData, dueDate: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Observaciones (Opcional):</label>
-                <textarea
-                  value={singleFeeData.notes}
-                  onChange={(e) => setSingleFeeData({ ...singleFeeData, notes: e.target.value })}
-                  placeholder="Detalles sobre jornada, comedor, etc..."
-                  rows={2}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="btn-fluid px-5 py-2 rounded-xl bg-[#1B4332] text-white font-bold hover:bg-[#2d5f47]"
-                >
-                  Generar Cuota
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Nueva Cuota Individual"
+        subtitle="Emite una cuota específica para un alumno de la guardería"
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateSingleFee} className="space-y-3.5 text-xs sm:text-sm">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Alumno:</label>
+            <select
+              required
+              value={singleFeeData.childId}
+              onChange={(e) => setSingleFeeData({ ...singleFeeData, childId: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            >
+              <option value="">Seleccione un alumno...</option>
+              {children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.firstName} {c.lastName} ({c.roomName || 'Sala'})
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Concepto:</label>
+            <input
+              type="text"
+              required
+              value={singleFeeData.concept}
+              onChange={(e) => setSingleFeeData({ ...singleFeeData, concept: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Importe ($ ARS):</label>
+              <input
+                type="number"
+                required
+                min={1}
+                value={singleFeeData.amount}
+                onChange={(e) => setSingleFeeData({ ...singleFeeData, amount: Number(e.target.value) })}
+                className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Período (YYYY-MM):</label>
+              <input
+                type="text"
+                required
+                value={singleFeeData.period}
+                onChange={(e) => setSingleFeeData({ ...singleFeeData, period: e.target.value })}
+                className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Fecha de Vencimiento:</label>
+            <input
+              type="date"
+              required
+              value={singleFeeData.dueDate}
+              onChange={(e) => setSingleFeeData({ ...singleFeeData, dueDate: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Observaciones (Opcional):</label>
+            <textarea
+              value={singleFeeData.notes}
+              onChange={(e) => setSingleFeeData({ ...singleFeeData, notes: e.target.value })}
+              placeholder="Detalles sobre jornada, comedor, etc..."
+              rows={2}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(false)}
+              className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn-fluid px-5 py-2 rounded-xl bg-[#1B4332] text-white font-bold hover:bg-[#2d5f47] cursor-pointer"
+            >
+              Generar Cuota
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* MODAL 3: EMISIÓN EN LOTE POR SALA */}
-      {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-lg font-bold text-[#1B4332]">Emisión de Cuotas por Sala</h3>
-                <p className="text-xs text-gray-500">Crea la cuota para todos los alumnos activos de la sala</p>
-              </div>
-              <button onClick={() => setIsBatchModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleBatchCreation} className="space-y-3.5 text-xs sm:text-sm">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Seleccionar Sala:</label>
-                <select
-                  required
-                  value={batchData.roomId}
-                  onChange={(e) => setBatchData({ ...batchData, roomId: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                >
-                  <option value="">Seleccione una sala pedagógica...</option>
-                  {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} ({r.ageRange})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Concepto:</label>
-                <input
-                  type="text"
-                  required
-                  value={batchData.concept}
-                  onChange={(e) => setBatchData({ ...batchData, concept: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Importe ($ ARS):</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={batchData.amount}
-                    onChange={(e) => setBatchData({ ...batchData, amount: Number(e.target.value) })}
-                    className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Período:</label>
-                  <input
-                    type="text"
-                    required
-                    value={batchData.period}
-                    onChange={(e) => setBatchData({ ...batchData, period: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Fecha de Vencimiento:</label>
-                <input
-                  type="date"
-                  required
-                  value={batchData.dueDate}
-                  onChange={(e) => setBatchData({ ...batchData, dueDate: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBatchModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="btn-fluid px-5 py-2 rounded-xl bg-emerald-700 text-white font-bold hover:bg-emerald-800"
-                >
-                  Emitir Cuotas
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        title="Emisión de Cuotas por Sala"
+        subtitle="Crea la cuota para todos los alumnos activos de la sala"
+        maxWidth="md"
+      >
+        <form onSubmit={handleBatchCreation} className="space-y-3.5 text-xs sm:text-sm">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Seleccionar Sala:</label>
+            <select
+              required
+              value={batchData.roomId}
+              onChange={(e) => setBatchData({ ...batchData, roomId: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            >
+              <option value="">Seleccione una sala pedagógica...</option>
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.ageRange})
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Concepto General:</label>
+            <input
+              type="text"
+              required
+              value={batchData.concept}
+              onChange={(e) => setBatchData({ ...batchData, concept: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Importe ($ ARS):</label>
+              <input
+                type="number"
+                required
+                min={1}
+                value={batchData.amount}
+                onChange={(e) => setBatchData({ ...batchData, amount: Number(e.target.value) })}
+                className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Período:</label>
+              <input
+                type="text"
+                required
+                value={batchData.period}
+                onChange={(e) => setBatchData({ ...batchData, period: e.target.value })}
+                className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Fecha de Vencimiento:</label>
+            <input
+              type="date"
+              required
+              value={batchData.dueDate}
+              onChange={(e) => setBatchData({ ...batchData, dueDate: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-[#1B4332]"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsBatchModalOpen(false)}
+              className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn-fluid px-5 py-2 rounded-xl bg-emerald-700 text-white font-bold hover:bg-emerald-800 cursor-pointer"
+            >
+              Emitir Cuotas
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* MODAL 4: VALIDACIÓN OFICIAL MERCADO PAGO */}
-      {isVerifyMpModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-[#009EE3]" />
-                <h3 className="text-lg font-bold text-gray-900">Validar Pago con Mercado Pago</h3>
-              </div>
-              <button onClick={() => setIsVerifyMpModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
+      <Modal
+        isOpen={isVerifyMpModalOpen}
+        onClose={() => setIsVerifyMpModalOpen(false)}
+        title="Validar Pago con Mercado Pago"
+        subtitle="Consulta segura del endpoint oficial de Mercado Pago"
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-gray-600">
+            Esta función consulta directamente el endpoint oficial de Mercado Pago (<code>/v1/payments/{'{id}'}</code>) mediante el servidor para validar el estado de la transacción sin depender del cliente.
+          </p>
+
+          <form onSubmit={handleVerifyMp} className="space-y-3 text-xs sm:text-sm">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">ID de Pago de Mercado Pago (Payment ID):</label>
+              <input
+                type="text"
+                required
+                placeholder="Ej: 1234567890"
+                value={verifyPaymentId}
+                onChange={(e) => setVerifyPaymentId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-gray-200 font-mono focus:outline-none focus:border-[#009EE3]"
+              />
             </div>
 
-            <p className="text-xs text-gray-600">
-              Esta función consulta directamente el endpoint oficial de Mercado Pago (<code>/v1/payments/{'{id}'}</code>) mediante el servidor para validar el estado de la transacción sin depender del cliente.
-            </p>
-
-            <form onSubmit={handleVerifyMp} className="space-y-3 text-xs sm:text-sm">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">ID de Pago de Mercado Pago (Payment ID):</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: 1234567890"
-                  value={verifyPaymentId}
-                  onChange={(e) => setVerifyPaymentId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 font-mono focus:outline-none focus:border-[#009EE3]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">ID de Cuota Interna (Opcional):</label>
-                <input
-                  type="text"
-                  placeholder="Ej: fee-mateo-oct"
-                  value={verifyFeeId}
-                  onChange={(e) => setVerifyFeeId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-gray-200 font-mono focus:outline-none focus:border-[#009EE3]"
-                />
-              </div>
-
-              {verifyResult && (
-                <div className={`p-3 rounded-2xl text-xs space-y-1 ${
-                  verifyResult.isApproved 
-                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' 
-                    : 'bg-gray-50 text-gray-800 border border-gray-200'
-                }`}>
-                  <div><strong>Verificado por servidor:</strong> {verifyResult.verified ? 'Sí' : 'No'}</div>
-                  <div><strong>Estado MP:</strong> {verifyResult.status || 'Desconocido'}</div>
-                  {verifyResult.statusDetail && <div><strong>Detalle:</strong> {verifyResult.statusDetail}</div>}
-                  {verifyResult.amount && <div><strong>Monto:</strong> ${verifyResult.amount} ARS</div>}
-                  {verifyResult.error && <div className="text-red-600 font-semibold">{verifyResult.error}</div>}
-                </div>
-              )}
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsVerifyMpModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100"
-                >
-                  Cerrar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isVerifying}
-                  className="btn-fluid px-5 py-2 rounded-xl bg-[#009EE3] text-white font-bold hover:bg-[#0081bb] flex items-center gap-1.5 shadow-xs"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
-                  Consultar API Oficial
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 5: DATOS BANCARIOS */}
-      {isBankDetailsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-[#1B4332]" />
-                <h3 className="text-lg font-bold text-[#1B4332]">Datos Bancarios Institucionales</h3>
-              </div>
-              <button onClick={() => setIsBankDetailsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">ID de Cuota Interna (Opcional):</label>
+              <input
+                type="text"
+                placeholder="Ej: fee-mateo-oct"
+                value={verifyFeeId}
+                onChange={(e) => setVerifyFeeId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-gray-200 font-mono focus:outline-none focus:border-[#009EE3]"
+              />
             </div>
 
-            <div className="space-y-3 text-xs sm:text-sm bg-[#FAF9F5] p-4 rounded-2xl border border-gray-200">
-              <div>
-                <span className="text-gray-500 block text-xs">Banco:</span>
-                <strong className="text-gray-800">{GUARDERIA_BANK_DETAILS.bankName}</strong>
+            {verifyResult && (
+              <div className={`p-3 rounded-2xl text-xs space-y-1 ${
+                verifyResult.isApproved 
+                  ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' 
+                  : 'bg-gray-50 text-gray-800 border border-gray-200'
+              }`}>
+                <div><strong>Verificado por servidor:</strong> {verifyResult.verified ? 'Sí' : 'No'}</div>
+                <div><strong>Estado MP:</strong> {verifyResult.status || 'Desconocido'}</div>
+                {verifyResult.statusDetail && <div><strong>Detalle:</strong> {verifyResult.statusDetail}</div>}
+                {verifyResult.amount && <div><strong>Monto:</strong> ${verifyResult.amount} ARS</div>}
+                {verifyResult.error && <div className="text-red-600 font-semibold">{verifyResult.error}</div>}
               </div>
-              <div>
-                <span className="text-gray-500 block text-xs">Titular:</span>
-                <strong className="text-gray-800">{GUARDERIA_BANK_DETAILS.accountHolder}</strong>
-              </div>
-              <div>
-                <span className="text-gray-500 block text-xs">Tipo de Cuenta:</span>
-                <span className="text-gray-800">{GUARDERIA_BANK_DETAILS.accountType}</span>
-              </div>
-              <div>
-                <span className="text-gray-500 block text-xs">CUIT:</span>
-                <span className="font-mono text-gray-800">{GUARDERIA_BANK_DETAILS.cuit}</span>
-              </div>
-              <div>
-                <span className="text-gray-500 block text-xs">CBU:</span>
-                <span className="font-mono text-gray-900 font-bold select-all bg-white p-1 rounded border border-gray-200 block mt-0.5">
-                  {GUARDERIA_BANK_DETAILS.cbu}
-                </span>
-              </div>
-              <div>
-                <span className="text-gray-500 block text-xs">Alias:</span>
-                <span className="font-mono text-[#1B4332] font-black select-all bg-white p-1 rounded border border-gray-200 block mt-0.5">
-                  {GUARDERIA_BANK_DETAILS.alias}
-                </span>
-              </div>
-            </div>
+            )}
 
-            <p className="text-xs text-gray-500 italic">
-              Estos datos se muestran automáticamente a los padres cuando eligen pagar por Transferencia Bancaria en el Portal de Familia.
-            </p>
-
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setIsBankDetailsModalOpen(false)}
-                className="btn-fluid px-5 py-2 rounded-xl bg-[#1B4332] text-white font-bold"
+                onClick={() => setIsVerifyMpModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 cursor-pointer"
               >
                 Cerrar
               </button>
+              <button
+                type="submit"
+                disabled={isVerifying}
+                className="btn-fluid px-5 py-2 rounded-xl bg-[#009EE3] text-white font-bold hover:bg-[#0081bb] flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+                Consultar API Oficial
+              </button>
+            </div>
+          </form>
+        </div>
+      </Modal>
+
+      {/* MODAL 5: DATOS BANCARIOS */}
+      <Modal
+        isOpen={isBankDetailsModalOpen}
+        onClose={() => setIsBankDetailsModalOpen(false)}
+        title="Datos Bancarios Institucionales"
+        subtitle="Cuentas oficiales de la guardería para transferencias bancarias"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-3 text-xs sm:text-sm bg-[#FAF9F5] p-4 rounded-2xl border border-gray-200">
+            <div>
+              <span className="text-gray-500 block text-xs">Banco:</span>
+              <strong className="text-gray-800">{GUARDERIA_BANK_DETAILS.bankName}</strong>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">Titular:</span>
+              <strong className="text-gray-800">{GUARDERIA_BANK_DETAILS.accountHolder}</strong>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">Tipo de Cuenta:</span>
+              <span className="text-gray-800">{GUARDERIA_BANK_DETAILS.accountType}</span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">CUIT:</span>
+              <span className="font-mono text-gray-800">{GUARDERIA_BANK_DETAILS.cuit}</span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">CBU:</span>
+              <span className="font-mono text-gray-900 font-bold select-all bg-white p-1 rounded border border-gray-200 block mt-0.5">
+                {GUARDERIA_BANK_DETAILS.cbu}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs">Alias:</span>
+              <span className="font-mono text-[#1B4332] font-black select-all bg-white p-1 rounded border border-gray-200 block mt-0.5">
+                {GUARDERIA_BANK_DETAILS.alias}
+              </span>
             </div>
           </div>
+
+          <p className="text-xs text-gray-500 italic">
+            Estos datos se muestran automáticamente a los padres cuando eligen pagar por Transferencia Bancaria en el Portal de Familia.
+          </p>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsBankDetailsModalOpen(false)}
+              className="btn-fluid px-5 py-2 rounded-xl bg-[#1B4332] text-white font-bold cursor-pointer"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

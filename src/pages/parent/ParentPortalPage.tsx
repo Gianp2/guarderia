@@ -29,6 +29,7 @@ import {
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase/config';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Child, Activity, AttendanceRecord, Fee, GUARDERIA_BANK_DETAILS } from '../../types';
 import { 
   INITIAL_CHILDREN, 
@@ -49,6 +50,7 @@ export const ParentPortalPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { userProfile, updateLinkedChild } = useAuth();
+  const toast = useToast();
   
   // Resolve linked children from userProfile
   const linkedIds = userProfile?.linkedChildIds ?? ['child-mateo'];
@@ -166,6 +168,7 @@ export const ParentPortalPage: React.FC = () => {
   const handleSaveContact = (e: React.FormEvent) => {
     e.preventDefault();
     setSaveSuccess(true);
+    toast.success('Contacto guardado', 'Se actualizaron las personas autorizadas para el retiro.');
     setTimeout(() => {
       setSaveSuccess(false);
       setIsEditContactOpen(false);
@@ -185,10 +188,16 @@ export const ParentPortalPage: React.FC = () => {
     if (res.success && res.child) {
       updateLinkedChild(res.child.id);
       setSelectedChild(res.child);
+      toast.success(
+        'Hijo/a vinculado', 
+        `${res.child.firstName} ${res.child.lastName} ahora está asociado a tu perfil familiar.`
+      );
       setIsLinkModalOpen(false);
       setNewCode('');
     } else {
-      setLinkError(res.message || 'Código inválido o ya utilizado.');
+      const err = res.message || 'Código inválido o ya utilizado.';
+      setLinkError(err);
+      toast.error('Error al vincular', err);
     }
   };
 
@@ -208,12 +217,17 @@ export const ParentPortalPage: React.FC = () => {
       });
 
       if (res.initPoint || res.sandboxInitPoint) {
+        toast.info('Redirigiendo a Mercado Pago...', 'Serás dirigido a la plataforma de pago segura');
         window.location.href = res.sandboxInitPoint || res.initPoint!;
       } else if (res.message) {
-        setMpError(res.message + (res.notice ? ` (${res.notice})` : ''));
+        const msg = res.message + (res.notice ? ` (${res.notice})` : '');
+        setMpError(msg);
+        toast.error('Error con Mercado Pago', msg);
       }
     } catch (err: any) {
-      setMpError(err.message || 'Error iniciando Mercado Pago');
+      const msg = err.message || 'Error iniciando Mercado Pago';
+      setMpError(msg);
+      toast.error('Error en pasarela de pago', msg);
     } finally {
       setMpLoading(false);
     }
@@ -224,7 +238,7 @@ export const ParentPortalPage: React.FC = () => {
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('El archivo no debe superar los 2MB.');
+      toast.error('Archivo muy pesado', 'El comprobante no debe superar los 2MB.');
       return;
     }
 
@@ -235,6 +249,7 @@ export const ParentPortalPage: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       setTransferFileDataUrl(uploadEvent.target?.result as string);
+      toast.info('Archivo adjuntado', `${file.name} listo para enviar`);
     };
     reader.readAsDataURL(file);
   };
@@ -242,7 +257,7 @@ export const ParentPortalPage: React.FC = () => {
   const handleSubmitTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFeeToPay || !selectedChild || !transferFileDataUrl) {
-      alert('Por favor adjunte el comprobante digital (imagen o PDF).');
+      toast.warning('Comprobante requerido', 'Por favor adjunte el comprobante digital (imagen o PDF).');
       return;
     }
 
@@ -264,6 +279,10 @@ export const ParentPortalPage: React.FC = () => {
       });
 
       setTransferSuccess(true);
+      toast.success(
+        'Comprobante enviado', 
+        'El recibo ha sido enviado al equipo de administración para su verificación.'
+      );
       setTimeout(() => {
         setIsPayModalOpen(false);
         setTransferSuccess(false);
@@ -273,7 +292,7 @@ export const ParentPortalPage: React.FC = () => {
         setTransferBankOrigin('');
       }, 2000);
     } catch (err: any) {
-      alert(`Error al enviar comprobante: ${err.message}`);
+      toast.error('Error al enviar', err.message || 'No se pudo enviar el comprobante.');
     } finally {
       setTransferSubmitting(false);
     }
@@ -282,6 +301,7 @@ export const ParentPortalPage: React.FC = () => {
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
+    toast.info('Copiado al portapapeles', `${field.toUpperCase()} copiado`);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
@@ -354,21 +374,25 @@ export const ParentPortalPage: React.FC = () => {
       </div>
 
       {/* Multiple Children Selector Tabs if more than one, plus link another button */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-1.5 p-1 bg-[#FAF9F5] border border-gray-200/80 rounded-2xl overflow-x-auto no-scrollbar max-w-full">
           {availableChildren.map(child => (
             <button
               key={child.id}
               onClick={() => setSelectedChild(child)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer active:scale-95 ${
                 selectedChild?.id === child.id
                   ? 'bg-[#1B4332] text-white shadow-xs'
-                  : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/80'
               }`}
             >
-              <Baby className="w-3.5 h-3.5" />
+              <Baby className="w-3.5 h-3.5 shrink-0" />
               <span>{child.firstName} {child.lastName}</span>
-              <span className="text-[10px] opacity-75">({child.roomName})</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                selectedChild?.id === child.id ? 'bg-white/20 text-white' : 'bg-gray-200/80 text-gray-600'
+              }`}>
+                {child.roomName}
+              </span>
             </button>
           ))}
         </div>
@@ -379,10 +403,10 @@ export const ParentPortalPage: React.FC = () => {
             setNewCode('');
             setIsLinkModalOpen(true);
           }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-50 border border-dashed border-[#52796F] text-[#52796F] text-xs font-bold transition-colors cursor-pointer"
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-dashed border-[#52796F] text-[#52796F] text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Vincular otro hijo/a con código</span>
+          <span>Vincular otro hijo/a</span>
         </button>
       </div>
 
@@ -419,174 +443,288 @@ export const ParentPortalPage: React.FC = () => {
       )}
 
       {/* Today's Status Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Attendance card */}
-        <div 
-          onClick={() => setActiveCardDetail({
-            title: 'Detalle de Asistencia y Permanencia',
-            subtitle: `${selectedChild?.firstName} ${selectedChild?.lastName} • Fecha: ${attendanceToday?.date || 'Hoy'}`,
-            content: (
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
-                  <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm mb-1">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    <span>Estado: Alumno Presente en Sala</span>
+      {(() => {
+        const todayMealActivity = recentActivities.find(a => a.category === 'meal');
+        const todayPedagogicalActivity = recentActivities.find(a => a.category === 'activity' || a.category === 'milestone') || recentActivities[0];
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Attendance card */}
+            <div 
+              onClick={() => setActiveCardDetail({
+                title: 'Detalle de Asistencia y Permanencia',
+                subtitle: `${selectedChild?.firstName} ${selectedChild?.lastName} • Fecha: ${attendanceToday?.date || 'Hoy'}`,
+                content: (
+                  <div className="space-y-4">
+                    <div className={`p-4 rounded-2xl border ${
+                      attendanceToday?.status === 'absent' 
+                        ? 'bg-rose-50 border-rose-200 text-rose-900' 
+                        : attendanceToday?.status === 'justified'
+                        ? 'bg-amber-50 border-amber-200 text-amber-900'
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    }`}>
+                      <div className="flex items-center gap-2 font-bold text-sm mb-1">
+                        <CheckCircle2 className={`w-5 h-5 shrink-0 ${
+                          attendanceToday?.status === 'absent' ? 'text-rose-600' : attendanceToday?.status === 'justified' ? 'text-amber-600' : 'text-emerald-600'
+                        }`} />
+                        <span>
+                          Estado: {attendanceToday?.status === 'absent' ? 'Ausente en Guardería' : attendanceToday?.status === 'justified' ? 'Inasistencia Justificada' : 'Alumno Presente en Sala'}
+                        </span>
+                      </div>
+                      <p className="text-xs opacity-90 leading-relaxed">
+                        {attendanceToday?.notes || 'Ingreso registrado en portería institucional en tiempo y forma.'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-gray-400 block mb-0.5 font-medium">Hora de Ingreso</span>
+                        <span className="font-bold text-[#1B4332] text-sm">
+                          {attendanceToday?.checkInTime ? `${attendanceToday.checkInTime} hs` : '08:15 hs'}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-gray-400 block mb-0.5 font-medium">Hora de Salida</span>
+                        <span className="font-bold text-[#1B4332] text-sm">
+                          {attendanceToday?.checkOutTime ? `${attendanceToday.checkOutTime} hs` : 'En sala (Jornada activa)'}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-gray-400 block mb-0.5 font-medium">Docente / Registro</span>
+                        <span className="font-bold text-[#1B4332] text-sm truncate block">
+                          {attendanceToday?.recordedByName || 'Docente de Turno'}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-gray-400 block mb-0.5 font-medium">Sala Asignada</span>
+                        <span className="font-bold text-[#1B4332] text-sm truncate block">
+                          {selectedChild?.roomName || 'Sala General'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {selectedChild?.authorizedPickups && selectedChild.authorizedPickups.length > 0 ? (
+                      <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
+                        <div className="text-xs font-bold text-gray-700">Adultos Autorizados para Retiro:</div>
+                        <div className="space-y-1.5">
+                          {selectedChild.authorizedPickups.map((p, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between text-xs bg-white p-2 rounded-xl border border-gray-200">
+                              <span className="font-semibold text-[#1B4332]">{p.name} ({p.relationship})</span>
+                              {p.dni && <span className="text-gray-500 font-mono text-[11px]">DNI: {p.dni}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : selectedChild?.emergencyContact ? (
+                      <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-1 text-xs">
+                        <div className="font-bold text-gray-700">Contacto Registrado para Emergencias:</div>
+                        <div className="text-[#1B4332] font-semibold">{selectedChild.emergencyContact}</div>
+                      </div>
+                    ) : null}
+
+                    <div className="p-3.5 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1] text-xs text-gray-600 leading-relaxed">
+                      <strong className="text-[#1B4332] block mb-1">Control Estricto de Seguridad en Portería:</strong>
+                      Solo pueden retirar al menor los tutores y adultos acreditados con DNI físico en recepción. Ante cualquier retiro extraordinario, por favor dar aviso previo mediante secretaría.
+                    </div>
                   </div>
-                  <p className="text-xs text-emerald-700">
-                    {attendanceToday?.notes || 'Ingreso registrado en portería institucional en tiempo y forma.'}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                    <span className="text-gray-400 block mb-0.5 font-medium">Hora de Ingreso</span>
-                    <span className="font-bold text-[#1B4332] text-sm">{attendanceToday?.checkInTime ? `${attendanceToday.checkInTime} hs` : '08:15 hs'}</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                    <span className="text-gray-400 block mb-0.5 font-medium">Registrado por</span>
-                    <span className="font-bold text-[#1B4332] text-sm">{attendanceToday?.recordedByName || 'Docente de Turno'}</span>
-                  </div>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1] text-xs text-gray-600">
-                  <strong className="text-[#1B4332] block mb-1">Retiro Autorizado:</strong>
-                  Solo pueden retirar los tutores registrados con DNI en portería. Si un familiar alternativo retira, avisar previamente.
-                </div>
+                )
+              })}
+              className="bg-white p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs hover:shadow-xs hover:border-[#52796F]/40 transition-all flex flex-col justify-between cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-[#52796F] transition-colors">
+                  Asistencia Hoy
+                </span>
+                <CalendarCheck2 className="w-4 h-4 text-[#52796F]" />
               </div>
-            )
-          })}
-          className="bg-white p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs hover:shadow-xs hover:border-[#52796F]/40 transition-all flex flex-col justify-between cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-[#52796F] transition-colors">
-              Asistencia Hoy
-            </span>
-            <CalendarCheck2 className="w-4 h-4 text-[#52796F]" />
-          </div>
 
-          <div className="mb-2">
-            <div className="text-base sm:text-lg font-black text-emerald-800 flex items-center gap-1.5">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>{attendanceToday?.checkInTime ? `Ingresó: ${attendanceToday.checkInTime} hs` : 'Presente en sala'}</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-              {attendanceToday?.notes || 'Ingreso registrado en portería sin novedades.'}
-            </p>
-          </div>
-
-          <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
-            <span>{attendanceToday?.recordedByName || 'Recepción'}</span>
-            <span className="text-[#52796F] font-bold group-hover:underline">Ver detalle</span>
-          </div>
-        </div>
-
-        {/* Feeding & Care */}
-        <div 
-          onClick={() => setActiveCardDetail({
-            title: 'Pautas de Nutrición y Alimentación Diaria',
-            subtitle: `Sala: ${selectedChild?.roomName || 'Cuna'} • Menú Saludable`,
-            content: (
-              <div className="space-y-4 text-xs">
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
-                  <div className="flex items-center gap-2 text-amber-900 font-bold text-sm mb-1">
-                    <Clock className="w-4 h-4 text-amber-700" />
-                    <span>Colación de Media Mañana (11:15 hs)</span>
-                  </div>
-                  <p className="text-amber-800">
-                    Papilla de frutas naturales (manzana y pera cocida) sin azúcares agregados. Ingesta completa y buena hidratación con agua mineral.
-                  </p>
+              <div className="mb-2">
+                <div className="text-base sm:text-lg font-black text-emerald-800 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>{attendanceToday?.checkInTime ? `Ingresó: ${attendanceToday.checkInTime} hs` : 'Presente en sala'}</span>
                 </div>
-                <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Alergias declaradas:</span>
-                    <span className="font-bold text-[#1B4332]">{selectedChild?.allergies || 'Ninguna registrada'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Indicaciones dietarias:</span>
-                    <span className="font-bold text-[#1B4332]">{selectedChild?.dietaryNotes || 'Dieta general recomendada'}</span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-gray-500">
-                  Cualquier ajuste en la alimentación puede ser comunicado directamente a la educadora de sala a través de secretaría.
+                <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  {attendanceToday?.notes || 'Ingreso registrado en portería sin novedades.'}
                 </p>
               </div>
-            )
-          })}
-          className="bg-white p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs hover:shadow-xs hover:border-[#52796F]/40 transition-all flex flex-col justify-between cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-[#52796F] transition-colors">
-              Alimentación
-            </span>
-            <Clock className="w-4 h-4 text-amber-600" />
-          </div>
 
-          <div className="mb-2">
-            <div className="text-sm font-bold text-[#1B4332]">
-              Colación de media mañana
-            </div>
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-              Alimentación completada acorde a las pautas nutricionales de la sala.
-            </p>
-          </div>
-
-          <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
-            <span>Horario habitual: 11:15 hs</span>
-            <span className="text-[#52796F] font-bold group-hover:underline">Ver detalle</span>
-          </div>
-        </div>
-
-        {/* Nap & Rest */}
-        <div 
-          onClick={() => setActiveCardDetail({
-            title: 'Registro de Siesta y Descanso Seguro',
-            subtitle: `Monitoreo del confort en sala • Espacio climatizado`,
-            content: (
-              <div className="space-y-4 text-xs">
-                <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200">
-                  <div className="flex items-center gap-2 text-purple-900 font-bold text-sm mb-1">
-                    <Sparkles className="w-4 h-4 text-purple-700" />
-                    <span>Siesta de Mediodía (12:30 a 14:00 hs)</span>
-                  </div>
-                  <p className="text-purple-800">
-                    Descanso placentero en cuna individual con sábanas esterilizadas. Acompañado de música instrumental suave y ambientación tenue a 22°C.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                    <span className="text-gray-400 block mb-0.5">Duración</span>
-                    <span className="font-bold text-[#1B4332]">1 hora 30 min</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                    <span className="text-gray-400 block mb-0.5">Despertar</span>
-                    <span className="font-bold text-[#1B4332]">Tranquilo y alegre</span>
-                  </div>
-                </div>
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+                <span>{attendanceToday?.recordedByName || 'Recepción'}</span>
+                <span className="text-[#52796F] font-bold group-hover:underline">Ver detalle →</span>
               </div>
-            )
-          })}
-          className="bg-white p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs hover:shadow-xs hover:border-[#52796F]/40 transition-all flex flex-col justify-between sm:col-span-2 lg:col-span-1 cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-[#52796F] transition-colors">
-              Descanso
-            </span>
-            <Sparkles className="w-4 h-4 text-purple-600" />
-          </div>
-
-          <div className="mb-2">
-            <div className="text-sm font-bold text-[#1B4332]">
-              Siesta de mediodía realizada
             </div>
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-              Descanso de confort en cuna individual con música clásica instrumental.
-            </p>
-          </div>
 
-          <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
-            <span>Sala acondicionada a 22°C</span>
-            <span className="text-[#52796F] font-bold group-hover:underline">Ver detalle</span>
+            {/* Feeding & Care */}
+            <div 
+              onClick={() => setActiveCardDetail({
+                title: 'Pautas de Nutrición y Alimentación Diaria',
+                subtitle: `Sala: ${selectedChild?.roomName || 'Cuna'} • Menú Saludable Supervisado`,
+                content: (
+                  <div className="space-y-4 text-xs">
+                    {todayMealActivity ? (
+                      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-amber-900 font-bold text-sm flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 text-amber-700" />
+                            {todayMealActivity.title}
+                          </span>
+                          <span className="text-amber-800 font-mono text-[11px] font-semibold">{todayMealActivity.time} hs</span>
+                        </div>
+                        <p className="text-amber-900 leading-relaxed">
+                          {todayMealActivity.description}
+                        </p>
+                        <div className="text-[11px] text-amber-700 pt-1 border-t border-amber-200/60">
+                          Registrado por: <strong>{todayMealActivity.authorName}</strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                        <div className="flex items-center gap-2 text-amber-900 font-bold text-sm mb-1">
+                          <Clock className="w-4 h-4 text-amber-700" />
+                          <span>Colación y Menú Saludable (11:15 hs)</span>
+                        </div>
+                        <p className="text-amber-800 leading-relaxed">
+                          Papilla y trocitos de frutas naturales (manzana, pera y banana) sin azúcares agregados. Hidratación constante con agua mineral y menú calórico adaptado a la edad.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">Alergias declaradas:</span>
+                        <span className={`font-bold px-2 py-0.5 rounded-full text-[11px] ${
+                          selectedChild?.allergies && selectedChild.allergies !== 'Ninguna' && selectedChild.allergies !== 'Ninguna registrada'
+                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {selectedChild?.allergies || 'Ninguna registrada'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">Indicaciones dietarias:</span>
+                        <span className="font-bold text-[#1B4332] text-right">
+                          {selectedChild?.dietaryNotes || 'Dieta general recomendada'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#F0ECE1] text-[11px] text-gray-500 leading-relaxed">
+                      Cualquier ajuste transitorio o permanente en la alimentación puede ser comunicado directamente a la educadora de sala a través de secretaría.
+                    </div>
+                  </div>
+                )
+              })}
+              className="bg-white p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs hover:shadow-xs hover:border-[#52796F]/40 transition-all flex flex-col justify-between cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-[#52796F] transition-colors">
+                  Alimentación
+                </span>
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+
+              <div className="mb-2">
+                <div className="text-sm font-bold text-[#1B4332]">
+                  {todayMealActivity?.title || 'Colación de media mañana'}
+                </div>
+                <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  {todayMealActivity?.description || 'Alimentación completada acorde a las pautas nutricionales de la sala.'}
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+                <span>{todayMealActivity?.time ? `Registrado: ${todayMealActivity.time} hs` : 'Horario habitual: 11:15 hs'}</span>
+                <span className="text-[#52796F] font-bold group-hover:underline">Ver detalle →</span>
+              </div>
+            </div>
+
+            {/* Pedagogical Activities & Stimulation */}
+            <div 
+              onClick={() => setActiveCardDetail({
+                title: 'Actividades Pedagógicas y Estimulación',
+                subtitle: `Sala: ${selectedChild?.roomName || 'Cuna'} • Plan Educativo Integral`,
+                content: (
+                  <div className="space-y-4 text-xs">
+                    {todayPedagogicalActivity ? (
+                      <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sky-900 font-bold text-sm flex items-center gap-1.5">
+                            <BookOpen className="w-4 h-4 text-sky-700" />
+                            {todayPedagogicalActivity.title}
+                          </span>
+                          <span className="text-sky-800 font-mono text-[11px] font-semibold">{todayPedagogicalActivity.time} hs</span>
+                        </div>
+                        <p className="text-sky-900 leading-relaxed whitespace-pre-line">
+                          {todayPedagogicalActivity.description}
+                        </p>
+                        {todayPedagogicalActivity.photoUrl && (
+                          <div className="pt-2">
+                            <img 
+                              src={todayPedagogicalActivity.photoUrl} 
+                              alt={todayPedagogicalActivity.title} 
+                              className="w-full h-40 object-cover rounded-xl border border-sky-200" 
+                            />
+                          </div>
+                        )}
+                        <div className="text-[11px] text-sky-700 pt-1 border-t border-sky-200/60">
+                          Docente: <strong>{todayPedagogicalActivity.authorName}</strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200">
+                        <div className="flex items-center gap-2 text-sky-900 font-bold text-sm mb-1">
+                          <Sparkles className="w-4 h-4 text-sky-700" />
+                          <span>Taller de Expresión y Psicomotricidad</span>
+                        </div>
+                        <p className="text-sky-800 leading-relaxed">
+                          Juegos de encastre, manipulación de texturas no tóxicas, rondas musicales y estimulación sensorial en colchonetas acondicionadas.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-gray-400 block mb-0.5">Enfoque Pedagógico</span>
+                        <span className="font-bold text-[#1B4332]">Juego Libre & Estimulación</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <span className="text-gray-400 block mb-0.5">Espacio de Actividades</span>
+                        <span className="font-bold text-[#1B4332]">Sala y Parque Exterior</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#F0ECE1] text-[11px] text-gray-500 leading-relaxed">
+                      Todas las dinámicas están guiadas por maestras jardineras y orientadas a fortalecer el desarrollo motriz, el lenguaje y la socialización infantil.
+                    </div>
+                  </div>
+                )
+              })}
+              className="bg-white p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs hover:shadow-xs hover:border-[#52796F]/40 transition-all flex flex-col justify-between sm:col-span-2 lg:col-span-1 cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-[#52796F] transition-colors">
+                  Actividades
+                </span>
+                <Sparkles className="w-4 h-4 text-sky-600" />
+              </div>
+
+              <div className="mb-2">
+                <div className="text-sm font-bold text-[#1B4332]">
+                  {todayPedagogicalActivity?.title || 'Juego y desarrollo motriz'}
+                </div>
+                <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  {todayPedagogicalActivity?.description || 'Exploración sensorial y rondas de canciones pedagógicas.'}
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+                <span>{todayPedagogicalActivity?.time ? `Registrado: ${todayPedagogicalActivity.time} hs` : 'Jornada activa'}</span>
+                <span className="text-[#52796F] font-bold group-hover:underline">Ver detalle →</span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Recent Activities Feed */}
       <div className="bg-white rounded-3xl border border-[#E9ECEF] p-5 sm:p-6 shadow-2xs space-y-4">
@@ -875,17 +1013,19 @@ export const ParentPortalPage: React.FC = () => {
         onClose={() => setActiveCardDetail(null)}
         title={activeCardDetail?.title || 'Detalle del Registro'}
         subtitle={activeCardDetail?.subtitle}
-        maxWidth="md"
+        maxWidth="lg"
       >
-        {activeCardDetail?.content}
-        <div className="mt-6 pt-3 border-t border-gray-100 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setActiveCardDetail(null)}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer"
-          >
-            Cerrar Detalle
-          </button>
+        <div className="space-y-4">
+          {activeCardDetail?.content}
+          <div className="pt-3 border-t border-gray-100 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setActiveCardDetail(null)}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-95 transition-all"
+            >
+              Cerrar Detalle
+            </button>
+          </div>
         </div>
       </Modal>
 

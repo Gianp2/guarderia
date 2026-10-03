@@ -20,11 +20,13 @@ import { db, auth } from '../../services/firebase/config';
 import { AttendanceRecord, Child, Room, AttendanceStatus } from '../../types';
 import { INITIAL_ATTENDANCE, INITIAL_CHILDREN, INITIAL_ROOMS } from '../../services/seedData';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const AttendancePage: React.FC = () => {
   const { role, userProfile } = useAuth();
+  const toast = useToast();
   const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE);
   const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
   const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
@@ -137,6 +139,15 @@ export const AttendancePage: React.FC = () => {
     } catch (err) {
       console.warn('Persisted locally:', err);
     }
+
+    const statusLabel = 
+      newRecord.status === 'present' ? 'Presente' :
+      newRecord.status === 'absent' ? 'Ausente' : 'Justificado';
+
+    toast.success(
+      editingRecord ? 'Asistencia actualizada' : 'Asistencia guardada',
+      `${newRecord.childName} registrado como ${statusLabel} (${newRecord.date})`
+    );
 
     setSaveSuccess(true);
     setTimeout(() => {
@@ -569,7 +580,7 @@ export const AttendancePage: React.FC = () => {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
                 <span className="text-gray-400 block mb-1">Hora de Ingreso</span>
                 <span className="font-bold text-emerald-700 text-sm">{viewAttendanceRecord.checkInTime ? `${viewAttendanceRecord.checkInTime} hs` : '-'}</span>
@@ -591,11 +602,11 @@ export const AttendancePage: React.FC = () => {
               Registrado por personal autorizado: <strong className="text-[#1B4332]">{viewAttendanceRecord.recordedByName}</strong>
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-gray-100">
+            <div className="flex justify-end pt-3 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => setViewAttendanceRecord(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-95 transition-all"
               >
                 Cerrar Detalle
               </button>

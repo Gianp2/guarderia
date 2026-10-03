@@ -16,7 +16,6 @@ import {
   MessageSquare, 
   Save, 
   Utensils, 
-  Moon, 
   Check, 
   Bell,
   XCircle,
@@ -26,9 +25,13 @@ import {
   ChevronUp,
   Edit,
   History,
-  DoorClosed
+  DoorClosed,
+  Zap,
+  Droplets,
+  HeartHandshake
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { 
   Room, 
   Child, 
@@ -61,6 +64,7 @@ import { db } from '../../services/firebase/config';
 
 export const TeacherDashboard: React.FC = () => {
   const { userProfile } = useAuth();
+  const toast = useToast();
 
   // Teacher assigned rooms
   const assignedRoomIds = userProfile?.assignedRoomIds && userProfile.assignedRoomIds.length > 0
@@ -89,10 +93,20 @@ export const TeacherDashboard: React.FC = () => {
   // Selected child for quick management modal
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
-  const [activeManageTab, setActiveManageTab] = useState<'activity' | 'milestone' | 'attendance' | 'announcement'>('activity');
+  const [activeManageTab, setActiveManageTab] = useState<'meal' | 'activity' | 'hygiene' | 'milestone' | 'attendance' | 'announcement'>('meal');
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState('');
+
+  // Group activity modal
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupActivityForm, setGroupActivityForm] = useState({
+    title: 'Taller de Expresión y Motricidad',
+    category: 'activity' as ActivityCategory,
+    description: 'Dinámica grupal de exploración sensorial, ronda de canciones y juego cooperativo en sala.',
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    photoUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80'
+  });
 
   // Card view modals
   const [viewActivityDetail, setViewActivityDetail] = useState<Activity | null>(null);
@@ -101,7 +115,7 @@ export const TeacherDashboard: React.FC = () => {
   // Form states for the modal
   const [activityForm, setActivityForm] = useState({
     title: '',
-    category: 'activity' as ActivityCategory,
+    category: 'meal' as ActivityCategory,
     description: '',
     photoUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80',
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -129,9 +143,8 @@ export const TeacherDashboard: React.FC = () => {
     importance: 'normal' as ImportanceLevel
   });
 
-  // 1. Synchronize in Realtime with Firestore
+  // Synchronize in Realtime with Firestore
   useEffect(() => {
-    // Rooms
     const unsubRooms = onSnapshot(collection(db, 'rooms'), (snap) => {
       if (!snap.empty) {
         const loaded: Room[] = [];
@@ -140,7 +153,6 @@ export const TeacherDashboard: React.FC = () => {
       }
     }, () => {/* use fallback */});
 
-    // Children
     const unsubChildren = onSnapshot(collection(db, 'children'), (snap) => {
       if (!snap.empty) {
         const loaded: Child[] = [];
@@ -149,7 +161,6 @@ export const TeacherDashboard: React.FC = () => {
       }
     }, () => {/* use fallback */});
 
-    // Attendance
     const unsubAtt = onSnapshot(collection(db, 'attendance'), (snap) => {
       if (!snap.empty) {
         const loaded: AttendanceRecord[] = [];
@@ -158,7 +169,6 @@ export const TeacherDashboard: React.FC = () => {
       }
     }, () => {/* use fallback */});
 
-    // Activities
     const unsubAct = onSnapshot(collection(db, 'activities'), (snap) => {
       if (!snap.empty) {
         const loaded: Activity[] = [];
@@ -167,7 +177,6 @@ export const TeacherDashboard: React.FC = () => {
       }
     }, () => {/* use fallback */});
 
-    // Progress Reports
     const unsubReports = onSnapshot(collection(db, 'progressReports'), (snap) => {
       if (!snap.empty) {
         const loaded: ProgressReport[] = [];
@@ -176,7 +185,6 @@ export const TeacherDashboard: React.FC = () => {
       }
     }, () => {/* use fallback */});
 
-    // Announcements
     const unsubAnn = onSnapshot(collection(db, 'announcements'), (snap) => {
       if (!snap.empty) {
         const loaded: Announcement[] = [];
@@ -241,8 +249,110 @@ export const TeacherDashboard: React.FC = () => {
     return true;
   });
 
-  // Direct Form Launchers
-  const handleOpenAttendance = (child: Child) => {
+  // FAST 1-CLICK ATTENDANCE (Instantly saves in local state + Firestore)
+  const handleQuickAttendance = async (child: Child, status: AttendanceStatus) => {
+    const teacherId = userProfile?.id || 'teacher-carla';
+    const teacherName = userProfile?.displayName || 'Docente Titular';
+    const recId = `att-${child.id}-${todayStr}`;
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const existing = attendanceList.find(a => a.childId === child.id && a.date === todayStr);
+
+    const newRecord: AttendanceRecord = {
+      id: existing?.id || recId,
+      childId: child.id,
+      childName: `${child.firstName} ${child.lastName}`,
+      roomId: child.roomId,
+      date: todayStr,
+      status: status,
+      checkInTime: status === 'present' ? (existing?.checkInTime || nowTime) : undefined,
+      checkOutTime: existing?.checkOutTime,
+      notes: existing?.notes || (status === 'absent' ? 'Inasistencia asentada por la docente' : status === 'justified' ? 'Inasistencia justificada por familia' : 'Ingreso registrado en sala'),
+      recordedByUserId: teacherId,
+      recordedByName: teacherName,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    setAttendanceList(prev => [newRecord, ...prev.filter(a => !(a.childId === child.id && a.date === todayStr))]);
+
+    try {
+      await setDoc(doc(db, 'attendance', newRecord.id), newRecord);
+    } catch (err) {
+      console.warn('Saved attendance locally:', err);
+    }
+
+    const statusLabel = status === 'present' 
+      ? `Presente (${nowTime} hs)` 
+      : status === 'absent' 
+      ? 'Ausente en sala' 
+      : 'Inasistencia justificada';
+
+    if (status === 'present') {
+      toast.success(`Asistencia: ${child.firstName} ${child.lastName}`, `Marcado/a como ${statusLabel}`);
+    } else if (status === 'absent') {
+      toast.error(`Asistencia: ${child.firstName} ${child.lastName}`, `Marcado/a como ${statusLabel}`);
+    } else {
+      toast.warning(`Asistencia: ${child.firstName} ${child.lastName}`, `Marcado/a como ${statusLabel}`);
+    }
+  };
+
+  // 1-CLICK BULK ATTENDANCE: Mark all children in room present
+  const handleMarkAllPresent = async () => {
+    const teacherId = userProfile?.id || 'teacher-carla';
+    const teacherName = userProfile?.displayName || 'Docente Titular';
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const newRecords: AttendanceRecord[] = [];
+
+    for (const child of roomChildren) {
+      const existing = attendanceList.find(a => a.childId === child.id && a.date === todayStr);
+      if (existing?.status === 'present') continue; // already marked
+
+      const recId = existing?.id || `att-${child.id}-${todayStr}`;
+      const rec: AttendanceRecord = {
+        id: recId,
+        childId: child.id,
+        childName: `${child.firstName} ${child.lastName}`,
+        roomId: child.roomId,
+        date: todayStr,
+        status: 'present',
+        checkInTime: existing?.checkInTime || nowTime,
+        checkOutTime: existing?.checkOutTime,
+        notes: existing?.notes || 'Ingreso asentado en jornada matutina de sala',
+        recordedByUserId: teacherId,
+        recordedByName: teacherName,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      newRecords.push(rec);
+
+      try {
+        await setDoc(doc(db, 'attendance', rec.id), rec);
+      } catch (err) {
+        console.warn('Saved attendance locally:', err);
+      }
+    }
+
+    if (newRecords.length > 0) {
+      setAttendanceList(prev => [
+        ...newRecords,
+        ...prev.filter(a => !newRecords.some(nr => nr.childId === a.childId && a.date === todayStr))
+      ]);
+      toast.success(
+        'Asistencia general completada',
+        `Se marcó Presente a todos los alumnos de ${activeRoom.name}`
+      );
+      setFeedbackMessage(`Se marcó presente a todos los alumnos de ${activeRoom.name}`);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 1400);
+    } else {
+      toast.info('Asistencia al día', `Todos los alumnos de ${activeRoom.name} ya estaban marcados como Presentes`);
+    }
+  };
+
+  // Direct Form Launchers with easy presets
+  const handleOpenAttendanceDetail = (child: Child) => {
     setSelectedChild(child);
     setActiveManageTab('attendance');
     const existingAtt = attendanceList.find(a => a.childId === child.id && a.date === todayStr);
@@ -267,9 +377,11 @@ export const TeacherDashboard: React.FC = () => {
     setIsManageModalOpen(true);
   };
 
-  const handleOpenActivity = (child: Child, initialCategory: ActivityCategory = 'activity', existingAct?: Activity) => {
+  const handleOpenRoutine = (child: Child, tab: 'meal' | 'activity' | 'hygiene', existingAct?: Activity) => {
     setSelectedChild(child);
-    setActiveManageTab('activity');
+    setActiveManageTab(tab);
+
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     if (existingAct) {
       setEditingRecordId(existingAct.id);
@@ -278,22 +390,34 @@ export const TeacherDashboard: React.FC = () => {
         category: existingAct.category,
         description: existingAct.description,
         photoUrl: existingAct.photoUrl || '',
-        time: existingAct.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        time: existingAct.time || nowTime
       });
     } else {
       setEditingRecordId(null);
       let defaultTitle = '';
-      if (initialCategory === 'meal') defaultTitle = 'Almuerzo / Colación nutritiva';
-      else if (initialCategory === 'nap') defaultTitle = 'Descanso / Siesta de la mañana';
-      else if (initialCategory === 'hygiene') defaultTitle = 'Higiene y cambio de muda';
-      else defaultTitle = 'Actividad pedagógica y motriz';
+      let defaultDesc = '';
+      let category: ActivityCategory = 'activity';
+
+      if (tab === 'meal') {
+        category = 'meal';
+        defaultTitle = 'Colación de Frutas Saludables';
+        defaultDesc = 'Comió con excelente apetito e hidratación adecuada durante la colación matutina.';
+      } else if (tab === 'hygiene') {
+        category = 'hygiene';
+        defaultTitle = 'Higiene y Cambio de Pañal';
+        defaultDesc = 'Muda completa con aplicación de crema protectora. Piel sana y limpia.';
+      } else {
+        category = 'activity';
+        defaultTitle = 'Taller de Expresión y Motricidad';
+        defaultDesc = 'Participó activamente en la dinámica pedagógica con gran entusiasmo y juego compartido.';
+      }
 
       setActivityForm({
         title: defaultTitle,
-        category: initialCategory,
-        description: '',
+        category: category,
+        description: defaultDesc,
         photoUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        time: nowTime
       });
     }
     setIsManageModalOpen(true);
@@ -361,13 +485,60 @@ export const TeacherDashboard: React.FC = () => {
       console.warn('Saved locally:', err);
     }
 
-    setFeedbackMessage(editingRecordId ? `Actividad actualizada para ${selectedChild.firstName}` : `Actividad registrada para ${selectedChild.firstName}`);
+    toast.success(
+      editingRecordId ? 'Registro actualizado' : 'Registro guardado',
+      `Se guardó "${activityForm.title}" para ${selectedChild.firstName}`
+    );
+    setFeedbackMessage(editingRecordId ? `Registro actualizado para ${selectedChild.firstName}` : `Registro cargado para ${selectedChild.firstName}`);
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
       setIsManageModalOpen(false);
       setEditingRecordId(null);
-    }, 1100);
+    }, 1000);
+  };
+
+  const handleSaveGroupActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupActivityForm.title || !groupActivityForm.description) return;
+
+    const teacherId = userProfile?.id || 'teacher-carla';
+    const teacherName = userProfile?.displayName || 'Docente Titular';
+    const recId = `act-group-${Date.now()}`;
+
+    const newRecord: Activity = {
+      id: recId,
+      title: groupActivityForm.title,
+      description: groupActivityForm.description,
+      category: groupActivityForm.category,
+      date: todayStr,
+      time: groupActivityForm.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      roomId: activeRoom.id,
+      roomName: activeRoom.name,
+      childIds: roomChildren.map(c => c.id),
+      photoUrl: groupActivityForm.photoUrl || undefined,
+      authorUserId: teacherId,
+      authorName: teacherName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    setActivitiesList(prev => [newRecord, ...prev]);
+
+    try {
+      await setDoc(doc(db, 'activities', recId), newRecord);
+    } catch (err) {
+      console.warn('Saved locally:', err);
+    }
+
+    toast.success(
+      'Actividad grupal guardada',
+      `"${groupActivityForm.title}" asignada a los ${roomChildren.length} alumnos de ${activeRoom.name}`
+    );
+    setIsGroupModalOpen(false);
+    setFeedbackMessage(`Actividad grupal guardada para los ${roomChildren.length} alumnos`);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 1200);
   };
 
   const handleSaveMilestone = async (e: React.FormEvent) => {
@@ -403,13 +574,17 @@ export const TeacherDashboard: React.FC = () => {
       console.warn('Saved locally:', err);
     }
 
+    toast.success(
+      editingRecordId ? 'Avance pedagógico actualizado' : 'Avance pedagógico guardado',
+      `"${milestoneForm.title}" para ${selectedChild.firstName} ${selectedChild.lastName}`
+    );
     setFeedbackMessage(editingRecordId ? `Avance actualizado para ${selectedChild.firstName}` : `Avance pedagógico registrado para ${selectedChild.firstName}`);
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
       setIsManageModalOpen(false);
       setEditingRecordId(null);
-    }, 1100);
+    }, 1000);
   };
 
   const handleSaveAttendance = async (e: React.FormEvent) => {
@@ -444,13 +619,17 @@ export const TeacherDashboard: React.FC = () => {
       console.warn('Saved locally:', err);
     }
 
-    setFeedbackMessage(`Asistencia de ${selectedChild.firstName} guardada (${attendanceForm.status === 'present' ? 'Presente' : attendanceForm.status === 'absent' ? 'Ausente' : 'Justificado'})`);
+    toast.success(
+      'Asistencia y notas guardadas',
+      `${selectedChild.firstName}: ${attendanceForm.status === 'present' ? 'Presente' : attendanceForm.status === 'absent' ? 'Ausente' : 'Justificado'}`
+    );
+    setFeedbackMessage(`Asistencia de ${selectedChild.firstName} guardada`);
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
       setIsManageModalOpen(false);
       setEditingRecordId(null);
-    }, 1100);
+    }, 1000);
   };
 
   const handleSaveAnnouncement = async (e: React.FormEvent) => {
@@ -466,14 +645,13 @@ export const TeacherDashboard: React.FC = () => {
       title: announcementForm.title,
       content: announcementForm.content,
       importance: announcementForm.importance,
+      publishDate: todayStr,
+      authorUserId: teacherId,
+      authorName: teacherName,
       targetAudience: 'parents',
       roomId: activeRoom.id,
       roomName: activeRoom.name,
-      authorUserId: teacherId,
-      authorName: teacherName,
-      publishDate: todayStr,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: new Date().toISOString()
     };
 
     setAnnouncementsList(prev => [newRecord, ...prev]);
@@ -484,88 +662,100 @@ export const TeacherDashboard: React.FC = () => {
       console.warn('Saved locally:', err);
     }
 
-    setFeedbackMessage('Novedad comunicada a las familias');
+    toast.info(
+      'Aviso publicado a familias',
+      `"${announcementForm.title}" visible para ${activeRoom.name}`
+    );
+    setFeedbackMessage(`Aviso publicado para las familias de ${activeRoom.name}`);
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
       setIsManageModalOpen(false);
-    }, 1100);
+      setAnnouncementForm({ title: '', content: '', importance: 'normal' });
+    }, 1000);
   };
 
   return (
-    <div className="space-y-6 w-full max-w-full overflow-x-hidden animate-fade-in">
-      {/* 1. HERO HEADER */}
-      <div className="bg-gradient-to-r from-[#1B4332] via-[#2D6A4F] to-[#52796F] text-white p-6 sm:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="flex items-center gap-4 sm:gap-5">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-2xl sm:text-3xl text-white shadow-xs shrink-0">
+    <div className="space-y-5 max-w-7xl mx-auto pb-12">
+      {/* 1. SIMPLE & WELCOMING TEACHER BANNER */}
+      <div className="bg-[#1B4332] text-white p-5 sm:p-7 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 border border-[#2D6A4F]">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-2xl text-white shadow-xs shrink-0">
             {userProfile?.displayName ? userProfile.displayName.charAt(0) : 'D'}
           </div>
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-[#D8E4DA] text-xs font-semibold backdrop-blur-xs mb-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-[#D8E4DA] text-xs font-semibold backdrop-blur-xs mb-1">
               <GraduationCap className="w-3.5 h-3.5 text-[#A3B18A]" />
-              <span>Docente a Cargo</span>
+              <span>Docente a Cargo • {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-              {userProfile?.displayName || 'Profa. Carla Méndez'}
+              ¡Hola, {userProfile?.displayName || 'Profa. Carla Méndez'}!
             </h2>
-            <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-white/80">
-              <span>Salas Asignadas:</span>
-              {myRooms.map(r => (
-                <span key={r.id} className="bg-white/20 px-2 py-0.5 rounded-lg font-bold text-white">
-                  {r.name}
-                </span>
-              ))}
-            </div>
+            <p className="text-xs text-white/80 mt-0.5">
+              Panel simplificado de control de asistencia, alimentación, mudas y actividades pedagógicas.
+            </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleMarkAllPresent}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#52796F] hover:bg-[#405F57] text-white text-xs font-bold transition-all shadow-xs active:scale-98 cursor-pointer"
+            title="Marcar a todos los alumnos de la sala como presentes con un solo clic"
+          >
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span>Marcar Todos Presentes</span>
+          </button>
+
+          <button
+            onClick={() => setIsGroupModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-all border border-white/20 active:scale-98 cursor-pointer"
+          >
+            <Users className="w-4 h-4" />
+            <span>+ Actividad Grupal</span>
+          </button>
+
           <Link
             to="/asistencia"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white text-[#1B4332] text-xs font-bold hover:bg-[#FAF9F5] transition-all shadow-xs active:scale-98"
           >
             <CalendarCheck2 className="w-4 h-4 text-[#52796F]" />
-            <span>Planilla General</span>
-          </Link>
-          <Link
-            to="/actividades"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-all border border-white/20 active:scale-98"
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>Bitácora Institucional</span>
+            <span>Planilla</span>
           </Link>
         </div>
       </div>
 
-      {/* 2. ROOM SELECTOR PILLS */}
-      <div className="bg-white p-4 rounded-3xl border border-[#E9ECEF] shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 overflow-x-auto pb-1 md:pb-0">
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider shrink-0 flex items-center gap-1.5">
-            <DoorClosed className="w-4 h-4 text-[#52796F]" />
+      {/* 2. ROOM SWITCHER TABS & ROOM ACTION */}
+      <div className="bg-white p-3 sm:p-4 rounded-3xl border border-[#E9ECEF] shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 w-full md:w-auto">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0 hidden sm:flex items-center gap-1.5 pl-1">
+            <DoorClosed className="w-3.5 h-3.5 text-[#52796F]" />
             <span>Salas:</span>
           </span>
-          {myRooms.map(room => {
-            const count = childrenList.filter(c => c.roomId === room.id).length;
-            const isSelected = selectedRoomId === room.id;
-            return (
-              <button
-                key={room.id}
-                onClick={() => setSelectedRoomId(room.id)}
-                className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-2 ${
-                  isSelected
-                    ? 'bg-[#1B4332] text-white shadow-xs scale-102'
-                    : 'bg-[#FAF9F5] text-gray-700 hover:bg-gray-100 border border-gray-200'
-                }`}
-              >
-                <span>{room.name}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                  isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {count} alumnos
-                </span>
-              </button>
-            );
-          })}
+          <div className="inline-flex items-center gap-1.5 p-1 bg-[#FAF9F5] rounded-2xl border border-gray-200/80 shrink-0 w-full sm:w-auto overflow-x-auto no-scrollbar">
+            {myRooms.map(room => {
+              const count = childrenList.filter(c => c.roomId === room.id).length;
+              const isSelected = selectedRoomId === room.id;
+              return (
+                <button
+                  key={room.id}
+                  onClick={() => setSelectedRoomId(room.id)}
+                  className={`px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center justify-center gap-2 active:scale-95 ${
+                    isSelected
+                      ? 'bg-[#1B4332] text-white shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/80'
+                  }`}
+                >
+                  <span>{room.name}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <button
@@ -574,64 +764,60 @@ export const TeacherDashboard: React.FC = () => {
             setActiveManageTab('announcement');
             setIsManageModalOpen(true);
           }}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-[#52796F] hover:bg-[#405F57] text-white text-xs font-bold shadow-2xs active:scale-98 cursor-pointer shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold shadow-2xs active:scale-98 cursor-pointer shrink-0 self-stretch sm:self-auto"
         >
-          <Bell className="w-3.5 h-3.5" />
-          <span>+ Nuevo Comunicado a Familias</span>
+          <Bell className="w-3.5 h-3.5 text-amber-700" />
+          <span>+ Nuevo Aviso a Familias</span>
         </button>
       </div>
 
-      {/* 3. ACTIVE ROOM OVERVIEW STATS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase">Matriculados</span>
+      {/* 3. COMPACT OVERVIEW STATS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E9ECEF] shadow-2xs">
+          <div className="flex items-center justify-between text-gray-500 mb-1">
+            <span className="text-[11px] font-bold uppercase">Matrícula</span>
             <Baby className="w-4 h-4 text-[#52796F]" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-[#1B4332]">
-            {roomChildren.length} <span className="text-xs text-gray-400 font-normal">/ cap. {activeRoom.capacity || 12}</span>
+            {roomChildren.length} <span className="text-xs text-gray-400 font-normal">alumnos</span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-0.5 truncate">{activeRoom.name}</p>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase">Presentes Hoy</span>
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-emerald-100 bg-emerald-50/20 shadow-2xs">
+          <div className="flex items-center justify-between text-emerald-800 mb-1">
+            <span className="text-[11px] font-bold uppercase">Presentes</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-emerald-700">
             {presentCount} <span className="text-xs text-gray-400 font-normal">({roomChildren.length > 0 ? Math.round((presentCount / roomChildren.length) * 100) : 0}%)</span>
           </div>
-          <p className="text-[11px] text-emerald-600 mt-0.5">En sala ahora</p>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase">Ausentes / Justif.</span>
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E9ECEF] shadow-2xs">
+          <div className="flex items-center justify-between text-rose-600 mb-1">
+            <span className="text-[11px] font-bold uppercase">Ausentes</span>
             <XCircle className="w-4 h-4 text-rose-500" />
           </div>
-          <div className="text-xl sm:text-2xl font-black text-gray-800">
-            {absentCount} <span className="text-xs text-amber-600 font-normal">({justifiedCount} justificados)</span>
+          <div className="text-xl sm:text-2xl font-black text-rose-700">
+            {absentCount + justifiedCount}
           </div>
-          <p className="text-[11px] text-gray-500 mt-0.5">{unregisteredCount} sin registrar hoy</p>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-[#E9ECEF] shadow-2xs">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase">Bitácora de Sala</span>
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E9ECEF] shadow-2xs">
+          <div className="flex items-center justify-between text-gray-500 mb-1">
+            <span className="text-[11px] font-bold uppercase">Bitácora Hoy</span>
             <BookOpen className="w-4 h-4 text-sky-600" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-[#1B4332]">
-            {roomActivities.length}
+            {roomActivities.filter(a => a.date === todayStr).length} <span className="text-xs text-gray-400 font-normal">cargadas</span>
           </div>
-          <p className="text-[11px] text-[#52796F] mt-0.5">Registros cargados</p>
         </div>
       </div>
 
-      {/* 4. CHILDREN CARDS WITH DIRECT EDITING FORMS */}
-      <div className="bg-white rounded-3xl border border-[#E9ECEF] p-5 sm:p-6 shadow-2xs space-y-4">
-        {/* Title and Filters */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+      {/* 4. MAIN ROSTER: CHILDREN CARDS WITH FAST 1-CLICK ATTENDANCE & SHORTCUTS */}
+      <div className="bg-white rounded-3xl border border-[#E9ECEF] p-4 sm:p-6 shadow-2xs space-y-4">
+        {/* Title and Fast Search / Filter */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
           <div>
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-[#52796F]" />
@@ -640,48 +826,87 @@ export const TeacherDashboard: React.FC = () => {
               </h3>
             </div>
             <p className="text-xs text-gray-500">
-              Acceso directo e individual para registrar y editar asistencia, actividades y avances pedagógicos.
+              Marcá asistencia con 1 clic y cargá alimentación, higiene o actividades de forma rápida.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
             {/* Search */}
-            <div className="relative">
+            <div className="relative flex-1 sm:w-48">
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar alumno..."
-                className="pl-8 pr-3 py-1.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#52796F]"
+                placeholder="Buscar niño..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-gray-200 text-xs bg-[#FAF9F5]/60 focus:bg-white focus:ring-2 focus:ring-[#52796F] transition-all"
               />
             </div>
 
-            {/* Filter pills */}
-            <div className="flex items-center gap-1 bg-[#FAF9F5] p-1 rounded-xl border border-gray-200 text-xs font-bold">
+            {/* Filter Pills: 2x2 grid on mobile, horizontal segmented row on sm+ */}
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 p-1 bg-[#FAF9F5] rounded-2xl border border-gray-200/80 text-xs font-semibold">
               <button
+                type="button"
                 onClick={() => setFilterStatus('all')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${filterStatus === 'all' ? 'bg-[#52796F] text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                  filterStatus === 'all'
+                    ? 'bg-[#1B4332] text-white shadow-xs font-bold'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+                }`}
               >
-                Todos
+                <span>Todos</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                  filterStatus === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {roomChildren.length}
+                </span>
               </button>
+
               <button
+                type="button"
                 onClick={() => setFilterStatus('present')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${filterStatus === 'present' ? 'bg-[#52796F] text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                  filterStatus === 'present'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'text-gray-600 hover:text-emerald-800 hover:bg-emerald-50/50'
+                }`}
               >
-                Presentes ({presentCount})
+                <span>Presentes</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                  filterStatus === 'present' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-800'
+                }`}>
+                  {presentCount}
+                </span>
               </button>
+
               <button
+                type="button"
                 onClick={() => setFilterStatus('unregistered')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${filterStatus === 'unregistered' ? 'bg-[#52796F] text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                  filterStatus === 'unregistered'
+                    ? 'bg-gray-800 text-white shadow-xs font-bold'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+                }`}
               >
-                Sin Registrar ({unregisteredCount})
+                <span>Sin Registrar</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                  filterStatus === 'unregistered' ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {unregisteredCount}
+                </span>
               </button>
+
               <button
+                type="button"
                 onClick={() => setFilterStatus('allergies')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${filterStatus === 'allergies' ? 'bg-amber-600 text-white' : 'text-amber-800 hover:text-amber-950'}`}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                  filterStatus === 'allergies'
+                    ? 'bg-amber-600 text-white shadow-xs font-bold'
+                    : 'text-gray-600 hover:text-amber-900 hover:bg-amber-50/50'
+                }`}
               >
-                Alergias
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                <span>Alergias</span>
               </button>
             </div>
           </div>
@@ -690,14 +915,13 @@ export const TeacherDashboard: React.FC = () => {
         {/* Children Grid */}
         {filteredChildren.length === 0 ? (
           <div className="py-12 text-center text-xs text-gray-500 bg-[#FAF9F5] rounded-2xl border border-gray-100">
-            No se encontraron alumnos que coincidan con la búsqueda en esta sala.
+            No se encontraron alumnos con los filtros seleccionados.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredChildren.map(child => {
               const childAtt = attendanceList.find(a => a.childId === child.id && a.date === todayStr);
               const childActivitiesToday = activitiesList.filter(a => a.childIds?.includes(child.id) && a.date === todayStr);
-              const childReports = reportsList.filter(r => r.childId === child.id);
               const isExpanded = expandedChildId === child.id;
 
               return (
@@ -705,7 +929,7 @@ export const TeacherDashboard: React.FC = () => {
                   key={child.id}
                   className="p-4 sm:p-5 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1] hover:border-[#52796F] transition-all shadow-2xs space-y-3"
                 >
-                  {/* Child Top Bar */}
+                  {/* Child Header: Name, Avatar, Age */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-12 h-12 rounded-2xl bg-[#EBF3ED] text-[#245436] flex items-center justify-center font-black text-base border border-[#D1E4D7] shrink-0">
@@ -715,37 +939,23 @@ export const TeacherDashboard: React.FC = () => {
                         <h4 className="font-extrabold text-[#1B4332] text-sm sm:text-base leading-tight truncate">
                           {child.firstName} {child.lastName}
                         </h4>
-                        <span className="text-[11px] text-gray-500 block">
+                        <span className="text-[11px] text-gray-500 block truncate">
                           Nacimiento: {child.birthDate} • Sala {child.roomName || activeRoom.name}
                         </span>
                       </div>
                     </div>
 
-                    {/* Attendance Pill */}
-                    {childAtt?.status === 'present' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Presente {childAtt.checkInTime ? `(${childAtt.checkInTime})` : ''}</span>
-                      </span>
-                    ) : childAtt?.status === 'absent' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
-                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                        <span>Ausente</span>
-                      </span>
-                    ) : childAtt?.status === 'justified' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
-                        <HelpCircle className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Justificado</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-gray-200 text-gray-600 shrink-0">
-                        <Clock className="w-3 h-3 text-gray-400" />
-                        <span>Sin registrar</span>
-                      </span>
-                    )}
+                    <Link
+                      to={`/perfil-nino/${child.id}`}
+                      className="inline-flex items-center gap-1 py-1 px-2.5 rounded-xl bg-white hover:bg-gray-100 text-[11px] font-semibold text-gray-600 border border-gray-200 transition-colors shrink-0 shadow-2xs"
+                      title="Ver expediente y contactos familiares"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-[#52796F]" />
+                      <span>Expediente</span>
+                    </Link>
                   </div>
 
-                  {/* Medical alert if any */}
+                  {/* Allergy Alert if declared */}
                   {child.allergies && child.allergies !== 'Ninguna' && child.allergies !== 'Ninguna conocida' && (
                     <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -753,92 +963,140 @@ export const TeacherDashboard: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Today Quick Summary Counters */}
-                  <div className="grid grid-cols-3 gap-2 text-center text-[11px] bg-white p-2 rounded-xl border border-gray-100">
-                    <div>
-                      <span className="text-gray-400 block text-[10px]">Actividades Hoy</span>
-                      <strong className="text-[#1B4332] font-black">{childActivitiesToday.length}</strong>
+                  {/* 1-CLICK ATTENDANCE SEGMENTED PILLS */}
+                  <div className="p-2.5 rounded-2xl bg-white border border-gray-200/80 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${
+                          childAtt?.status === 'present' ? 'bg-emerald-500' :
+                          childAtt?.status === 'absent' ? 'bg-rose-500' :
+                          childAtt?.status === 'justified' ? 'bg-amber-500' :
+                          'bg-gray-300'
+                        }`} />
+                        <span className="text-gray-600 font-semibold">
+                          {childAtt?.status === 'present' ? `Presente (${childAtt.checkInTime || '08:30'} hs)` :
+                           childAtt?.status === 'absent' ? 'Ausente hoy' :
+                           childAtt?.status === 'justified' ? 'Justificado' :
+                           'Sin registrar hoy'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAttendanceDetail(child)}
+                        className="text-[#52796F] hover:text-[#1B4332] flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                        title="Modificar horario exacto o nota"
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>Detalle</span>
+                      </button>
                     </div>
-                    <div>
-                      <span className="text-gray-400 block text-[10px]">Hitos / Avances</span>
-                      <strong className="text-[#52796F] font-black">{childReports.length}</strong>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block text-[10px]">Egreso</span>
-                      <strong className="text-gray-700 font-bold">{childAtt?.checkOutTime ? `${childAtt.checkOutTime} hs` : '--:--'}</strong>
+
+                    <div className="grid grid-cols-3 gap-1 p-1 bg-[#FAF9F5] rounded-xl border border-gray-200/60">
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAttendance(child, 'present')}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                          childAtt?.status === 'present'
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'text-gray-500 hover:text-emerald-800 hover:bg-emerald-50/60'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Presente</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAttendance(child, 'absent')}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                          childAtt?.status === 'absent'
+                            ? 'bg-rose-600 text-white shadow-2xs'
+                            : 'text-gray-500 hover:text-rose-800 hover:bg-rose-50/60'
+                        }`}
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>Ausente</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAttendance(child, 'justified')}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                          childAtt?.status === 'justified'
+                            ? 'bg-amber-600 text-white shadow-2xs'
+                            : 'text-gray-500 hover:text-amber-800 hover:bg-amber-50/60'
+                        }`}
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        <span>Justif.</span>
+                      </button>
                     </div>
                   </div>
 
-                  {/* DIRECT ACCESS BUTTONS TO EDITING FORMS */}
-                  <div className="pt-2 border-t border-gray-200/70 flex flex-wrap items-center gap-1.5 sm:gap-2">
-                    {/* 1. Direct Attendance Form Button */}
+                  {/* QUICK LOGGING ACTION PILLS */}
+                  <div className="grid grid-cols-3 gap-1.5 pt-0.5">
                     <button
                       type="button"
-                      onClick={() => handleOpenAttendance(child)}
-                      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-98 ${
-                        childAtt
-                          ? 'bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100'
-                          : 'bg-[#52796F] text-white hover:bg-[#405F57]'
-                      }`}
-                      title={childAtt ? 'Modificar o asentar salida de hoy' : 'Registrar asistencia de hoy'}
+                      onClick={() => handleOpenRoutine(child, 'meal')}
+                      className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Registrar alimentación, colación o almuerzo"
                     >
-                      <CalendarCheck2 className="w-3.5 h-3.5" />
-                      <span>{childAtt ? 'Editar Asistencia' : 'Tomar Asistencia'}</span>
+                      <Utensils className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>Comida</span>
                     </button>
 
-                    {/* 2. Direct Activity / Routine Form Button */}
                     <button
                       type="button"
-                      onClick={() => handleOpenActivity(child, 'activity')}
-                      className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-xs font-bold text-gray-700 transition-all cursor-pointer shadow-2xs active:scale-98"
-                      title="Cargar actividad, alimentación, siesta o muda"
+                      onClick={() => handleOpenRoutine(child, 'activity')}
+                      className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Cargar actividad pedagógica, juego o motricidad"
                     >
-                      <BookOpen className="w-3.5 h-3.5 text-[#52796F]" />
-                      <span>+ Actividad</span>
+                      <BookOpen className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+                      <span>Actividad</span>
                     </button>
 
-                    {/* 3. Direct Progress Report Form Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenRoutine(child, 'hygiene')}
+                      className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Registrar higiene, cambio de pañal o control de esfínteres"
+                    >
+                      <Droplets className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <span>Higiene</span>
+                    </button>
+                  </div>
+
+                  {/* Secondary shortcuts: Progress Milestone & History */}
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200/60 text-xs">
                     <button
                       type="button"
                       onClick={() => handleOpenMilestone(child)}
-                      className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-xs font-bold text-gray-700 transition-all cursor-pointer shadow-2xs active:scale-98"
-                      title="Registrar hito pedagógico, conducta y sugerencias"
+                      className="inline-flex items-center gap-1 font-bold text-[#52796F] hover:underline cursor-pointer"
                     >
-                      <TrendingUp className="w-3.5 h-3.5 text-[#2D6A4F]" />
-                      <span>+ Avance</span>
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>+ Avance Pedagógico</span>
                     </button>
 
-                    {/* 4. View Child Profile Link */}
-                    <Link
-                      to={`/perfil-nino/${child.id}`}
-                      className="inline-flex items-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-gray-100 text-xs font-semibold text-gray-700 border border-gray-200 transition-colors ml-auto"
-                      title="Ver expediente y contactos familiares"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-[#52796F]" />
-                      <span>Expediente</span>
-                    </Link>
-
-                    {/* Toggle Today's Records List */}
-                    {childActivitiesToday.length > 0 && (
+                    {childActivitiesToday.length > 0 ? (
                       <button
                         type="button"
                         onClick={() => setExpandedChildId(isExpanded ? null : child.id)}
-                        className="w-full mt-1 pt-1 border-t border-dashed border-gray-200 flex items-center justify-between text-[11px] font-bold text-[#52796F] hover:underline cursor-pointer"
+                        className="inline-flex items-center gap-1 font-semibold text-gray-500 hover:text-gray-800 cursor-pointer text-[11px]"
                       >
-                        <span className="flex items-center gap-1">
-                          <History className="w-3 h-3" />
-                          <span>Ver {childActivitiesToday.length} registros cargados hoy</span>
-                        </span>
-                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        <History className="w-3 h-3 text-[#52796F]" />
+                        <span>{childActivitiesToday.length} registros hoy</span>
+                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                       </button>
+                    ) : (
+                      <span className="text-[11px] text-gray-400">Sin bitácora hoy</span>
                     )}
                   </div>
 
                   {/* Expanded Accordion with today's activities and edit buttons */}
                   {isExpanded && childActivitiesToday.length > 0 && (
-                    <div className="pt-2 space-y-2 border-t border-gray-200 animate-fade-in">
+                    <div className="pt-2 space-y-2 border-t border-gray-200">
                       <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                        Historial de {child.firstName} hoy:
+                        Historial de hoy ({child.firstName}):
                       </div>
                       {childActivitiesToday.map(act => (
                         <div
@@ -848,13 +1106,15 @@ export const TeacherDashboard: React.FC = () => {
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-[#1B4332] truncate">{act.title}</span>
-                              <Badge variant="blue" size="sm">{act.category}</Badge>
+                              <Badge variant={act.category === 'meal' ? 'amber' : act.category === 'hygiene' ? 'green' : 'blue'} size="sm">
+                                {act.category === 'meal' ? 'Alimentación' : act.category === 'hygiene' ? 'Higiene' : 'Actividad'}
+                              </Badge>
                             </div>
                             <p className="text-gray-500 text-[11px] line-clamp-1">{act.description}</p>
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleOpenActivity(child, act.category, act)}
+                            onClick={() => handleOpenRoutine(child, act.category === 'meal' ? 'meal' : act.category === 'hygiene' ? 'hygiene' : 'activity', act)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-[#52796F] hover:text-white text-gray-700 text-[11px] font-bold transition-colors cursor-pointer shrink-0"
                           >
                             <Edit className="w-3 h-3" />
@@ -871,15 +1131,15 @@ export const TeacherDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* 5. RECENT ROOM ACTIVITIES & ANNOUNCEMENTS TWO-COLUMN SECTION */}
+      {/* 5. RECENT ROOM ACTIVITIES & ANNOUNCEMENTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Room Activities */}
+        {/* Recent Room Activities Feed */}
         <div className="bg-white rounded-3xl border border-[#E9ECEF] p-5 sm:p-6 shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-[#52796F]" />
               <h3 className="font-bold text-[#1B4332] text-base">
-                Bitácora Reciente de {activeRoom.name}
+                Bitácora de {activeRoom.name}
               </h3>
             </div>
             <Link to="/actividades" className="text-xs font-bold text-[#52796F] hover:underline">
@@ -900,7 +1160,9 @@ export const TeacherDashboard: React.FC = () => {
                   <div className="min-w-0 pr-2">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-[#1B4332] truncate group-hover:text-[#52796F] transition-colors">{act.title}</span>
-                      <Badge variant="blue" size="sm">{act.category}</Badge>
+                      <Badge variant={act.category === 'meal' ? 'amber' : act.category === 'hygiene' ? 'green' : 'blue'} size="sm">
+                        {act.category === 'meal' ? 'Alimentación' : act.category === 'hygiene' ? 'Higiene' : 'Actividad'}
+                      </Badge>
                     </div>
                     <span className="text-gray-500 text-[11px] line-clamp-1 mt-0.5">{act.description}</span>
                     <span className="text-[10px] text-gray-400 block mt-0.5">Por: {act.authorName}</span>
@@ -912,13 +1174,13 @@ export const TeacherDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Announcements for Room & Nursery */}
+        {/* Announcements for Room */}
         <div className="bg-white rounded-3xl border border-[#E9ECEF] p-5 sm:p-6 shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bell className="w-5 h-5 text-[#52796F]" />
               <h3 className="font-bold text-[#1B4332] text-base">
-                Novedades y Avisos a Familias
+                Avisos y Comunicados a Familias
               </h3>
             </div>
             <button
@@ -929,7 +1191,7 @@ export const TeacherDashboard: React.FC = () => {
               }}
               className="text-xs font-bold text-[#52796F] hover:underline cursor-pointer"
             >
-              + Nueva novedad
+              + Nuevo aviso
             </button>
           </div>
 
@@ -961,7 +1223,7 @@ export const TeacherDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 6. MODAL WITH FORMS FOR INDIVIDUAL CHILD MANAGEMENT */}
+      {/* 6. INDIVIDUAL CHILD RECORD MODAL (WITH QUICK PRESET CHIPS, NO SIESTAS) */}
       <Modal
         isOpen={isManageModalOpen}
         onClose={() => {
@@ -970,14 +1232,14 @@ export const TeacherDashboard: React.FC = () => {
         }}
         title={
           selectedChild 
-            ? `${editingRecordId ? 'Modificar Registro' : 'Nuevo Registro'}: ${selectedChild.firstName} ${selectedChild.lastName}` 
+            ? `${editingRecordId ? 'Modificar Registro' : 'Cargar Registro'}: ${selectedChild.firstName} ${selectedChild.lastName}` 
             : 'Gestión Docente'
         }
         subtitle={`Sala: ${selectedChild?.roomName || activeRoom.name} • Docente: ${userProfile?.displayName || 'Profa. Carla Méndez'}`}
-        maxWidth="xl"
+        maxWidth="lg"
       >
         {saveSuccess ? (
-          <div className="text-center py-8 animate-fade-in">
+          <div className="text-center py-8">
             <div className="w-14 h-14 rounded-3xl bg-[#EBF3ED] text-[#245436] flex items-center justify-center mx-auto mb-3 border border-[#D1E4D7] shadow-xs">
               <Check className="w-8 h-8" />
             </div>
@@ -985,185 +1247,243 @@ export const TeacherDashboard: React.FC = () => {
               {feedbackMessage || 'Registro guardado exitosamente'}
             </h4>
             <p className="text-xs text-gray-400 mt-1">
-              Los datos se guardaron en la base de datos y se notificaron a la familia del alumno.
+              Actualizado inmediatamente en la base de datos institucional.
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Modal Navigation Tabs */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#FAF9F5] rounded-2xl border border-[#EBE7DF]">
+            {/* Modal Navigation Tabs (NO SIESTAS!) */}
+            <div className="flex items-center gap-1.5 p-1 bg-[#FAF9F5] rounded-2xl border border-[#EBE7DF] overflow-x-auto no-scrollbar">
               <button
                 type="button"
-                onClick={() => setActiveManageTab('activity')}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeManageTab === 'activity'
-                    ? 'bg-[#52796F] text-white shadow-2xs'
+                onClick={() => {
+                  setActiveManageTab('meal');
+                  setActivityForm(prev => ({
+                    ...prev,
+                    category: 'meal',
+                    title: prev.title || 'Colación de Frutas Saludables'
+                  }));
+                }}
+                className={`flex-1 min-w-[72px] sm:min-w-0 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95 ${
+                  activeManageTab === 'meal'
+                    ? 'bg-amber-600 text-white shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
                 }`}
               >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Actividad / Rutina</span>
+                <Utensils className="w-3.5 h-3.5 shrink-0" />
+                <span>Comida</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveManageTab('activity');
+                  setActivityForm(prev => ({
+                    ...prev,
+                    category: 'activity',
+                    title: prev.title || 'Actividad Pedagógica y Juego'
+                  }));
+                }}
+                className={`flex-1 min-w-[72px] sm:min-w-0 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95 ${
+                  activeManageTab === 'activity'
+                    ? 'bg-sky-600 text-white shadow-2xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                <span>Actividad</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveManageTab('hygiene');
+                  setActivityForm(prev => ({
+                    ...prev,
+                    category: 'hygiene',
+                    title: prev.title || 'Higiene y Cambio de Pañal'
+                  }));
+                }}
+                className={`flex-1 min-w-[72px] sm:min-w-0 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95 ${
+                  activeManageTab === 'hygiene'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+                }`}
+              >
+                <Droplets className="w-3.5 h-3.5 shrink-0" />
+                <span>Higiene</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveManageTab('milestone')}
-                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`flex-1 min-w-[72px] sm:min-w-0 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95 ${
                   activeManageTab === 'milestone'
                     ? 'bg-[#52796F] text-white shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
                 }`}
               >
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>Avance / Desarrollo</span>
+                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                <span>Avance</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveManageTab('attendance')}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`flex-1 min-w-[72px] sm:min-w-0 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95 ${
                   activeManageTab === 'attendance'
-                    ? 'bg-[#52796F] text-white shadow-2xs'
+                    ? 'bg-[#1B4332] text-white shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
                 }`}
               >
-                <CalendarCheck2 className="w-3.5 h-3.5" />
+                <CalendarCheck2 className="w-3.5 h-3.5 shrink-0" />
                 <span>Asistencia</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveManageTab('announcement')}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeManageTab === 'announcement'
-                    ? 'bg-[#52796F] text-white shadow-2xs'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
-                }`}
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Aviso / Novedad</span>
               </button>
             </div>
 
-            {/* FORM 1: ACTIVIDAD / RUTINA / ALIMENTACIÓN / DESCANSO */}
-            {activeManageTab === 'activity' && (
-              <form onSubmit={handleSaveActivity} className="space-y-3.5 animate-fade-in">
-                {/* Category quick selectors */}
+            {/* FORM 1, 2, 3: ROUTINES (MEAL, ACTIVITY, HYGIENE) */}
+            {(activeManageTab === 'meal' || activeManageTab === 'activity' || activeManageTab === 'hygiene') && (
+              <form onSubmit={handleSaveActivity} className="space-y-3.5">
+                {/* 1-Click Fast Presets */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Tipo de Rutina o Actividad *
+                    Opciones Rápidas (Hacé clic para autocompletar):
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActivityForm(prev => ({ 
-                        ...prev, 
-                        category: 'meal',
-                        title: prev.title === 'Actividad pedagógica y motriz' || !prev.title ? 'Almuerzo / Colación nutritiva' : prev.title
-                      }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors ${
-                        activityForm.category === 'meal'
-                          ? 'bg-amber-50 text-amber-900 border-amber-400'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Utensils className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>Alimentación</span>
-                    </button>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    {activeManageTab === 'meal' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Colación de Frutas Frescas',
+                            description: 'Comió toda la porción de manzana y banana con excelente apetito e hidratación.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🍎 Colación de frutas (completa)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Almuerzo Nutritivo Supervisado',
+                            description: 'Almuerzo completo con verduras y puré. Muy buena aceptación del menú.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🍲 Almuerzo balanceado
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Merienda de la Tarde',
+                            description: 'Merienda con yogur y cereales. Aceptó la mitad de la porción con agua.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🥛 Merienda con yogur
+                        </button>
+                      </>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => setActivityForm(prev => ({ 
-                        ...prev, 
-                        category: 'nap',
-                        title: prev.title === 'Almuerzo / Colación nutritiva' || !prev.title ? 'Descanso / Siesta del mediodía' : prev.title
-                      }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors ${
-                        activityForm.category === 'nap'
-                          ? 'bg-purple-50 text-purple-900 border-purple-400'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Moon className="w-4 h-4 text-purple-600 shrink-0" />
-                      <span>Descanso / Siesta</span>
-                    </button>
+                    {activeManageTab === 'activity' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Taller de Pintura y Colores',
+                            description: 'Exploración dactilar con pinturas al agua no tóxicas. Disfrutó mucho la actividad.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🎨 Taller de Pintura
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Juegos de Encastre y Motricidad',
+                            description: 'Manipulación de bloques de encastre y coordinación óculo-manual.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🧩 Bloques de encastre
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Ronda Musical y Canciones',
+                            description: 'Participación en rondas con instrumentos musicales sencillos y baile.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🎵 Ronda Musical
+                        </button>
+                      </>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => setActivityForm(prev => ({ 
-                        ...prev, 
-                        category: 'hygiene',
-                        title: prev.title.startsWith('Almuerzo') || !prev.title ? 'Higiene y cambio de muda' : prev.title
-                      }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors ${
-                        activityForm.category === 'hygiene'
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-400'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>Higiene / Mudas</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActivityForm(prev => ({ ...prev, category: 'activity' }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors ${
-                        activityForm.category === 'activity'
-                          ? 'bg-sky-50 text-sky-900 border-sky-400'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <BookOpen className="w-4 h-4 text-sky-600 shrink-0" />
-                      <span>Juego Pedagógico</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActivityForm(prev => ({ ...prev, category: 'milestone' }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors ${
-                        activityForm.category === 'milestone'
-                          ? 'bg-rose-50 text-rose-900 border-rose-400'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <TrendingUp className="w-4 h-4 text-rose-600 shrink-0" />
-                      <span>Hito del Día</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActivityForm(prev => ({ ...prev, category: 'general' }))}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors ${
-                        activityForm.category === 'general'
-                          ? 'bg-gray-100 text-gray-900 border-gray-400'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <MessageSquare className="w-4 h-4 text-gray-600 shrink-0" />
-                      <span>Nota General</span>
-                    </button>
+                    {activeManageTab === 'hygiene' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Cambio de Pañal y Muda Limpia',
+                            description: 'Muda completa sin rozaduras. Se aplicó crema protectora.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          💧 Cambio de Pañal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Control de Esfínteres',
+                            description: 'Uso exitoso del bacín/inodoro adaptado. Gran progreso en autonomía.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🚽 Control de Esfínteres
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivityForm(prev => ({
+                            ...prev,
+                            title: 'Higiene de Manos y Cara',
+                            description: 'Lavado con agua y jabón antes de comer y tras el juego.'
+                          }))}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                        >
+                          🧼 Higiene de Manos
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Título del Registro *
+                      Título *
                     </label>
                     <input
                       type="text"
                       required
                       value={activityForm.title}
                       onChange={(e) => setActivityForm(prev => ({ ...prev, title: e.target.value }))}
-                      placeholder="EJ: Almuerzo completo y siesta de 1h"
+                      placeholder="Ej: Colación de frutas"
                       className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Hora del Registro *
+                      Horario *
                     </label>
                     <input
                       type="time"
@@ -1177,54 +1497,47 @@ export const TeacherDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Detalle y Observación para la Familia *
+                    Observación para la Familia *
                   </label>
                   <textarea
                     rows={3}
                     required
                     value={activityForm.description}
                     onChange={(e) => setActivityForm(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Describa cómo participó el niño, apetito, descanso o interacción con sus pares..."
+                    placeholder="Describa el comportamiento, apetito o logros observados..."
                     className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Fotografía o Archivo Adjunto (Opcional)
+                    Foto Adjunta (Opcional)
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={activityForm.photoUrl}
-                      onChange={(e) => setActivityForm(prev => ({ ...prev, photoUrl: e.target.value }))}
-                      placeholder="URL de imagen..."
-                      className="flex-1 px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
-                    />
-                    {activityForm.photoUrl && (
-                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 shrink-0">
-                        <img src={activityForm.photoUrl} alt="Vista previa" className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                  </div>
+                  <input
+                    type="url"
+                    value={activityForm.photoUrl}
+                    onChange={(e) => setActivityForm(prev => ({ ...prev, photoUrl: e.target.value }))}
+                    placeholder="URL de imagen..."
+                    className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
+                  />
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t border-gray-100 text-[11px] text-gray-400">
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100 text-[11px] text-gray-500">
                   <span>Alumno: <strong>{selectedChild?.firstName} {selectedChild?.lastName}</strong></span>
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>{editingRecordId ? 'Guardar Cambios' : 'Registrar Actividad'}</span>
+                    <span>Guardar Registro</span>
                   </button>
                 </div>
               </form>
             )}
 
-            {/* FORM 2: AVANCES PEDAGÓGICOS / DESARROLLO */}
+            {/* FORM 4: AVANCES PEDAGÓGICOS */}
             {activeManageTab === 'milestone' && (
-              <form onSubmit={handleSaveMilestone} className="space-y-3.5 animate-fade-in">
+              <form onSubmit={handleSaveMilestone} className="space-y-3.5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -1236,7 +1549,7 @@ export const TeacherDashboard: React.FC = () => {
                       className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
                     >
                       <option value="cognitive">Exploración y Desarrollo Cognitivo</option>
-                      <option value="language">Lenguaje, Comprensión y Diálogo</option>
+                      <option value="language">Lenguaje y Comunicación</option>
                       <option value="motor">Desarrollo Motor Fino y Grueso</option>
                       <option value="social_emotional">Socioemocional y Vínculos con Pares</option>
                       <option value="autonomy">Hábitos y Autonomía</option>
@@ -1259,7 +1572,7 @@ export const TeacherDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Logro Pedagógico o Conducta Observada *
+                    Logro o Conducta Observada *
                   </label>
                   <input
                     type="text"
@@ -1273,65 +1586,37 @@ export const TeacherDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Observación Pedagógica Detallada *
+                    Observación Pedagógica *
                   </label>
                   <textarea
                     rows={3}
                     required
                     value={milestoneForm.observation}
                     onChange={(e) => setMilestoneForm(prev => ({ ...prev, observation: e.target.value }))}
-                    placeholder="Describa la evolución del niño de forma respetuosa y pedagógica..."
+                    placeholder="Describa el progreso del alumno de forma respetuosa y pedagógica..."
                     className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Fortalezas Destacadas
-                    </label>
-                    <input
-                      type="text"
-                      value={milestoneForm.strengths}
-                      onChange={(e) => setMilestoneForm(prev => ({ ...prev, strengths: e.target.value }))}
-                      placeholder="EJ: Gran entusiasmo y curiosidad activa"
-                      className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Sugerencias para la Familia
-                    </label>
-                    <input
-                      type="text"
-                      value={milestoneForm.recommendations}
-                      onChange={(e) => setMilestoneForm(prev => ({ ...prev, recommendations: e.target.value }))}
-                      placeholder="EJ: Juegos de encastre y lectura de cuentos antes de dormir"
-                      className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
-                    />
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-between pt-3 border-t border-gray-100 text-[11px] text-gray-400">
-                  <span>Quedará registrado en el expediente pedagógico del niño</span>
+                  <span>Queda guardado en el expediente del alumno</span>
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>{editingRecordId ? 'Guardar Cambios' : 'Registrar Avance'}</span>
+                    <span>Guardar Avance</span>
                   </button>
                 </div>
               </form>
             )}
 
-            {/* FORM 3: ASISTENCIA Y PERMANENCIA DEL ALUMNO */}
+            {/* FORM 5: ASISTENCIA DETALLADA (HORARIOS Y NOTAS) */}
             {activeManageTab === 'attendance' && (
-              <form onSubmit={handleSaveAttendance} className="space-y-3.5 animate-fade-in">
+              <form onSubmit={handleSaveAttendance} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Estado de Asistencia Hoy ({todayStr}) *
+                    Estado de Asistencia *
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     <button
@@ -1378,7 +1663,7 @@ export const TeacherDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Horario de Ingreso
+                      Hora de Ingreso
                     </label>
                     <input
                       type="time"
@@ -1390,7 +1675,7 @@ export const TeacherDashboard: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Horario de Retiro / Salida
+                      Hora de Salida / Retiro
                     </label>
                     <input
                       type="time"
@@ -1410,7 +1695,7 @@ export const TeacherDashboard: React.FC = () => {
                     type="text"
                     value={attendanceForm.notes}
                     onChange={(e) => setAttendanceForm(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="EJ: Retiró abuela autorizada con DNI en portería"
+                    placeholder="Ej: Retiró madre autorizada con DNI"
                     className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
                   />
                 </div>
@@ -1419,7 +1704,7 @@ export const TeacherDashboard: React.FC = () => {
                   <span>Actualiza la nómina de sala en tiempo real</span>
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
                   >
                     <Save className="w-3.5 h-3.5" />
                     <span>Guardar Asistencia</span>
@@ -1428,9 +1713,9 @@ export const TeacherDashboard: React.FC = () => {
               </form>
             )}
 
-            {/* FORM 4: AVISOS Y COMUNICADOS A FAMILIAS */}
+            {/* FORM 6: COMUNICADO A FAMILIAS */}
             {activeManageTab === 'announcement' && (
-              <form onSubmit={handleSaveAnnouncement} className="space-y-3.5 animate-fade-in">
+              <form onSubmit={handleSaveAnnouncement} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
                     Nivel de Importancia *
@@ -1441,8 +1726,8 @@ export const TeacherDashboard: React.FC = () => {
                     className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
                   >
                     <option value="normal">Informativo Habitual</option>
-                    <option value="important">Importante (Reunión, muda extra, paseo)</option>
-                    <option value="urgent">Urgente (Salud o retiro anticipado)</option>
+                    <option value="important">Importante (Reunión, muda extra)</option>
+                    <option value="urgent">Urgente (Aviso de salud)</option>
                   </select>
                 </div>
 
@@ -1455,7 +1740,7 @@ export const TeacherDashboard: React.FC = () => {
                     required
                     value={announcementForm.title}
                     onChange={(e) => setAnnouncementForm(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="EJ: Traer botella de agua con nombre y muda fresca"
+                    placeholder="Ej: Traer botella de agua con nombre"
                     className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
                   />
                 </div>
@@ -1469,19 +1754,19 @@ export const TeacherDashboard: React.FC = () => {
                     required
                     value={announcementForm.content}
                     onChange={(e) => setAnnouncementForm(prev => ({ ...prev, content: e.target.value }))}
-                    placeholder="Escriba el comunicado que recibirán los tutores en su portal familiar..."
+                    placeholder="Escriba el comunicado que recibirán las familias..."
                     className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
                   />
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-gray-100 text-[11px] text-gray-400">
-                  <span>Visible inmediatamente para las familias de la sala</span>
+                  <span>Visible inmediatamente en el portal de las familias</span>
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>Publicar Novedad</span>
+                    <span>Publicar Aviso</span>
                   </button>
                 </div>
               </form>
@@ -1490,29 +1775,129 @@ export const TeacherDashboard: React.FC = () => {
         )}
       </Modal>
 
-      {/* Activity Card Detail Modal */}
+      {/* 7. GROUP ACTIVITY MODAL (WHOLE ROOM IN 1 CLICK) */}
+      <Modal
+        isOpen={isGroupModalOpen}
+        onClose={() => setIsGroupModalOpen(false)}
+        title={`Actividad Grupal para ${activeRoom.name}`}
+        subtitle={`Se registrará automáticamente en la bitácora de los ${roomChildren.length} alumnos de la sala`}
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveGroupActivity} className="space-y-4">
+          <div className="p-3 rounded-2xl bg-[#EBF3ED] text-[#245436] border border-[#D1E4D7] text-xs flex items-center gap-2">
+            <HeartHandshake className="w-4 h-4 text-[#52796F] shrink-0" />
+            <span>Esta actividad quedará visible en la bitácora de todos los niños de la sala sin tener que cargarla uno por uno.</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Título de la Actividad *
+              </label>
+              <input
+                type="text"
+                required
+                value={groupActivityForm.title}
+                onChange={(e) => setGroupActivityForm(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Ej: Taller de Pintura y Colores"
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Horario *
+              </label>
+              <input
+                type="time"
+                required
+                value={groupActivityForm.time}
+                onChange={(e) => setGroupActivityForm(prev => ({ ...prev, time: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              Descripción de la Dinámica *
+            </label>
+            <textarea
+              rows={3}
+              required
+              value={groupActivityForm.description}
+              onChange={(e) => setGroupActivityForm(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Describa cómo participó el grupo, materiales utilizados y objetivos..."
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              Foto de la Sala (Opcional)
+            </label>
+            <input
+              type="url"
+              value={groupActivityForm.photoUrl}
+              onChange={(e) => setGroupActivityForm(prev => ({ ...prev, photoUrl: e.target.value }))}
+              placeholder="https://images.unsplash.com/..."
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setIsGroupModalOpen(false)}
+              className="px-4 py-2 rounded-xl text-xs font-medium text-gray-600 hover:bg-gray-100 cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-98"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Guardar para Toda la Sala</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 8. ACTIVITY DETAIL MODAL */}
       <Modal
         isOpen={!!viewActivityDetail}
         onClose={() => setViewActivityDetail(null)}
         title={viewActivityDetail?.title || 'Detalle de Bitácora'}
         subtitle={`Sala: ${viewActivityDetail?.roomName || activeRoom.name} • ${viewActivityDetail?.date} a las ${viewActivityDetail?.time} hs`}
-        maxWidth="md"
+        maxWidth="lg"
       >
         {viewActivityDetail && (
           <div className="space-y-4 text-xs">
             <div className="p-4 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1]">
               <div className="flex items-center gap-2 mb-2">
-                <Badge variant="blue" size="sm">{viewActivityDetail.category}</Badge>
+                <Badge variant={viewActivityDetail.category === 'meal' ? 'amber' : viewActivityDetail.category === 'hygiene' ? 'green' : 'blue'} size="sm">
+                  {viewActivityDetail.category === 'meal' ? 'Alimentación' : viewActivityDetail.category === 'hygiene' ? 'Higiene' : 'Actividad'}
+                </Badge>
                 <span className="font-bold text-[#1B4332] text-sm">{viewActivityDetail.title}</span>
               </div>
               <p className="text-gray-700 leading-relaxed whitespace-pre-line text-xs sm:text-sm">
                 {viewActivityDetail.description}
               </p>
+              {viewActivityDetail.photoUrl && (
+                <div className="pt-3">
+                  <img
+                    src={viewActivityDetail.photoUrl}
+                    alt={viewActivityDetail.title}
+                    className="w-full h-44 object-cover rounded-xl border border-gray-200"
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                <span className="text-gray-400 block mb-0.5">Autor</span>
+                <span className="text-gray-400 block mb-0.5">Docente</span>
                 <span className="font-bold text-[#1B4332]">{viewActivityDetail.authorName}</span>
               </div>
               <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
@@ -1525,7 +1910,7 @@ export const TeacherDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setViewActivityDetail(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer active:scale-95 transition-all"
               >
                 Cerrar Detalle
               </button>
@@ -1534,13 +1919,13 @@ export const TeacherDashboard: React.FC = () => {
         )}
       </Modal>
 
-      {/* Announcement Card Detail Modal */}
+      {/* 9. ANNOUNCEMENT DETAIL MODAL */}
       <Modal
         isOpen={!!viewAnnouncementDetail}
         onClose={() => setViewAnnouncementDetail(null)}
         title={viewAnnouncementDetail?.title || 'Comunicado a Familias'}
         subtitle={`Publicado el ${viewAnnouncementDetail?.publishDate}`}
-        maxWidth="md"
+        maxWidth="lg"
       >
         {viewAnnouncementDetail && (
           <div className="space-y-4 text-xs">
@@ -1558,14 +1943,14 @@ export const TeacherDashboard: React.FC = () => {
 
             <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-gray-500">
               <span>Autor: <strong className="text-[#1B4332]">{viewAnnouncementDetail.authorName}</strong></span>
-              <span>Destinatarios: <strong>Familias</strong></span>
+              <span>Destinatarios: <strong>Familias de la Sala</strong></span>
             </div>
 
             <div className="flex justify-end pt-3 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => setViewAnnouncementDetail(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#52796F] hover:bg-[#405F57] shadow-xs cursor-pointer"
               >
                 Cerrar Comunicado
               </button>

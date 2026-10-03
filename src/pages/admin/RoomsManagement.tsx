@@ -14,10 +14,12 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { Room, Child } from '../../types';
 import { INITIAL_ROOMS, INITIAL_CHILDREN } from '../../services/seedData';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const RoomsManagement: React.FC = () => {
+  const toast = useToast();
   const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
   const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -111,6 +113,11 @@ export const RoomsManagement: React.FC = () => {
     } catch (err) {
       console.warn('Saved in memory:', err);
     }
+
+    toast.success(
+      editingRoom ? 'Sala actualizada' : 'Sala creada',
+      `Configuración de "${newRecord.name}" (${newRecord.ageRange}) guardada con éxito`
+    );
 
     setSaveSuccess(true);
     setTimeout(() => {

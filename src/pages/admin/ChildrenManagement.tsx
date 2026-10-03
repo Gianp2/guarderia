@@ -18,10 +18,12 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { Child, Room, EnrollmentStatus } from '../../types';
 import { INITIAL_CHILDREN, INITIAL_ROOMS, INITIAL_FAMILIES } from '../../services/seedData';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const ChildrenManagement: React.FC = () => {
+  const toast = useToast();
   const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
   const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
   const [searchTerm, setSearchTerm] = useState('');
@@ -144,6 +146,11 @@ export const ChildrenManagement: React.FC = () => {
     } catch (err) {
       console.warn('Could not persist to Firestore directly, saved in memory/session:', err);
     }
+
+    toast.success(
+      editingChild ? 'Legajo actualizado' : 'Alumno registrado',
+      `${newRecord.firstName} ${newRecord.lastName} (${newRecord.roomName}) guardado correctamente`
+    );
 
     setSaveSuccess(true);
     setTimeout(() => {

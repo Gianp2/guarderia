@@ -18,10 +18,12 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { Family, Child } from '../../types';
 import { INITIAL_FAMILIES, INITIAL_CHILDREN } from '../../services/seedData';
+import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const FamiliesManagement: React.FC = () => {
+  const toast = useToast();
   const [families, setFamilies] = useState<Family[]>(INITIAL_FAMILIES);
   const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
   const [searchTerm, setSearchTerm] = useState('');
@@ -129,6 +131,11 @@ export const FamiliesManagement: React.FC = () => {
     } catch (err) {
       console.warn('Persisted locally:', err);
     }
+
+    toast.success(
+      editingFamily ? 'Familia actualizada' : 'Familia registrada',
+      `Ficha familiar de "${newRecord.familyName}" guardada con éxito`
+    );
 
     setSaveSuccess(true);
     setTimeout(() => {

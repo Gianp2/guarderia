@@ -15,6 +15,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { auth, db } from '../../services/firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
@@ -22,6 +23,7 @@ import { doc, getDoc } from 'firebase/firestore';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { signInWithGoogle, switchSimulatedRole, unlinkChildrenForTesting } = useAuth();
+  const toast = useToast();
   
   // Selection before login: 'parent' | 'teacher'
   const [selectedRoleType, setSelectedRoleType] = useState<'parent' | 'teacher'>('parent');
@@ -99,6 +101,7 @@ export const LoginPage: React.FC = () => {
   const handleParentLinkedLogin = () => {
     setErrorMessage('');
     switchSimulatedRole('parent');
+    toast.success('Sesión iniciada', 'Bienvenido/a al Portal Familiar (Familia Rossi)');
     navigate('/familia');
   };
 
@@ -106,18 +109,21 @@ export const LoginPage: React.FC = () => {
     setErrorMessage('');
     switchSimulatedRole('parent');
     unlinkChildrenForTesting();
+    toast.info('Modo sin vincular', 'Podés probar el proceso de vincular un alumno con el código de prueba');
     navigate('/vincular-hijo');
   };
 
   const handleTeacherQuickLogin = () => {
     setErrorMessage('');
     switchSimulatedRole('teacher');
+    toast.success('Sesión iniciada', 'Bienvenida al Panel Docente, Seño Carla');
     navigate('/docente');
   };
 
   const handleAdminQuickLogin = () => {
     switchSimulatedRole('admin');
     setIsAdminModalOpen(false);
+    toast.success('Sesión iniciada', 'Bienvenido al Panel de Administración');
     navigate('/admin');
   };
 
@@ -126,6 +132,7 @@ export const LoginPage: React.FC = () => {
     setErrorMessage('');
     if (!email) {
       setErrorMessage('Por favor ingrese su correo electrónico registrado.');
+      toast.warning('Dato requerido', 'Por favor ingrese su correo electrónico');
       return;
     }
 
@@ -134,14 +141,18 @@ export const LoginPage: React.FC = () => {
     if (selectedRoleType === 'teacher') {
       // Validate teacher credentials
       if (cleanEmail.includes('rossi') || cleanEmail.includes('padre') || cleanEmail.includes('familia')) {
-        setErrorMessage('Acceso denegado: Esta cuenta corresponde a una Familia. Por favor seleccione la pestaña "Ingresar como Padre/Madre".');
+        const err = 'Acceso denegado: Esta cuenta corresponde a una Familia. Por favor seleccione la pestaña "Ingresar como Padre/Madre".';
+        setErrorMessage(err);
+        toast.error('Acceso incorrecto', err);
         return;
       }
       handleTeacherQuickLogin();
     } else {
       // Validate parent credentials
       if (cleanEmail.includes('docente') || cleanEmail.includes('maestra') || cleanEmail.includes('carla')) {
-        setErrorMessage('Esta cuenta pertenece al plantel de maestras. Por favor seleccione la pestaña "Ingresar como Maestra".');
+        const err = 'Esta cuenta pertenece al plantel de maestras. Por favor seleccione la pestaña "Ingresar como Maestra".';
+        setErrorMessage(err);
+        toast.error('Acceso incorrecto', err);
         return;
       }
       handleParentLinkedLogin();
@@ -152,6 +163,7 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     if (!resetEmail) return;
     setResetSuccess(true);
+    toast.success('Instrucciones enviadas', `Se envió el enlace de recuperación a ${resetEmail}`);
     setTimeout(() => {
       setIsResetOpen(false);
       setResetSuccess(false);

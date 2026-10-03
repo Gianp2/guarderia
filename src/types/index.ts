@@ -64,6 +64,12 @@ export interface Child {
   dietaryNotes?: string;
   medicalNotes?: string;
   emergencyContact?: string;
+  authorizedPickups?: Array<{
+    name: string;
+    relationship: string;
+    dni?: string;
+    phone?: string;
+  }>;
   administrativeNotes?: string;
   photoUrl?: string;
   bloodType?: string;
