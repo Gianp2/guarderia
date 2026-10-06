@@ -11,7 +11,7 @@ import {
   BookOpen, 
   ShieldCheck,
   Clock,
-  Sparkles,
+  GraduationCap,
   CreditCard,
   DollarSign,
   UserCheck
@@ -24,33 +24,59 @@ import {
   INITIAL_ROOMS, 
   INITIAL_USERS, 
   INITIAL_ATTENDANCE, 
-  INITIAL_ANNOUNCEMENTS
+  INITIAL_ANNOUNCEMENTS,
+  INITIAL_FEES
 } from '../../services/seedData';
-import { Child, Room, AttendanceRecord, Announcement } from '../../types';
+import { dataService } from '../../services/dataService';
+import { Child, Room, AttendanceRecord, Announcement, Fee } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { SchoolCalendar } from '../../components/calendar/SchoolCalendar';
 
 export const AdminDashboard: React.FC = () => {
-  const [childrenCount, setChildrenCount] = useState<number>(INITIAL_CHILDREN.length);
+  const [childrenCount, setChildrenCount] = useState<number>(() => dataService.getChildren().length);
   const [familiesCount, setFamiliesCount] = useState<number>(INITIAL_FAMILIES.length);
   const [teachersCount, setTeachersCount] = useState<number>(2);
-  const [roomsCount, setRoomsCount] = useState<number>(INITIAL_ROOMS.length);
-  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE);
-  const [recentAnnouncements, setRecentAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
-  const [allergiesAlerts, setAllergiesAlerts] = useState<Child[]>(
-    INITIAL_CHILDREN.filter(c => c.allergies && c.allergies !== 'Ninguna' && c.allergies !== 'Ninguna conocida')
+  const [roomsCount, setRoomsCount] = useState<number>(() => dataService.getRooms().length);
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>(() => dataService.getAttendance());
+  const [recentAnnouncements, setRecentAnnouncements] = useState<Announcement[]>(() => dataService.getAnnouncements().slice(0, 3));
+  const [allergiesAlerts, setAllergiesAlerts] = useState<Child[]>(() =>
+    dataService.getChildren().filter(c => c.allergies && c.allergies !== 'Ninguna' && c.allergies !== 'Ninguna conocida')
   );
 
-  // Financial Stats
-  const [totalCollectedMonth, setTotalCollectedMonth] = useState<number>(48000);
-  const [totalPendingDebt, setTotalPendingDebt] = useState<number>(145000);
-  const [pendingReviewsCount, setPendingReviewsCount] = useState<number>(1);
+  // Financial Stats computed from actual fees
+  const [totalCollectedMonth, setTotalCollectedMonth] = useState<number>(() => {
+    return INITIAL_FEES.filter(f => f.status === 'paid').reduce((acc, f) => acc + (f.amount || 0), 0);
+  });
+  const [totalPendingDebt, setTotalPendingDebt] = useState<number>(() => {
+    return INITIAL_FEES.filter(f => f.status !== 'paid').reduce((acc, f) => acc + (f.amount || 0), 0);
+  });
+  const [pendingReviewsCount, setPendingReviewsCount] = useState<number>(() => {
+    return INITIAL_FEES.filter(f => f.status === 'in_review').length;
+  });
   
   // Card click view modals (instant background scroll lock)
   const [selectedChildAllergy, setSelectedChildAllergy] = useState<Child | null>(null);
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<Announcement | null>(null);
 
   useEffect(() => {
+    const unsubChildren = dataService.subscribe('children', () => {
+      const kids = dataService.getChildren();
+      setChildrenCount(kids.length);
+      setAllergiesAlerts(kids.filter(c => c.allergies && c.allergies !== 'Ninguna' && c.allergies !== 'Ninguna conocida'));
+    });
+    const unsubRooms = dataService.subscribe('rooms', () => {
+      setRoomsCount(dataService.getRooms().length);
+    });
+    const unsubAttendance = dataService.subscribe('attendance', () => {
+      setTodayAttendance(dataService.getAttendance());
+    });
+    const unsubAnnouncements = dataService.subscribe('announcements', () => {
+      setRecentAnnouncements(dataService.getAnnouncements().slice(0, 3));
+    });
+
+    dataService.syncFromFirestore();
+
     // Attempt live fetch if collections are populated and user is authenticated
     const fetchData = async () => {
       if (!auth?.currentUser) return;
@@ -105,6 +131,13 @@ export const AdminDashboard: React.FC = () => {
       }
     };
     fetchData();
+
+    return () => {
+      unsubChildren();
+      unsubRooms();
+      unsubAttendance();
+      unsubAnnouncements();
+    };
   }, []);
 
   const presentsCount = todayAttendance.filter(a => a.status === 'present').length;
@@ -113,12 +146,12 @@ export const AdminDashboard: React.FC = () => {
   const attendancePercentage = Math.round((presentsCount / (todayAttendance.length || 1)) * 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Top Banner / Welcome */}
-      <div className="bg-gradient-to-r from-[#52796F] to-[#2D6A4F] text-white p-5 sm:p-8 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-[#52796F] to-[#2D6A4F] text-white p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-white text-xs font-semibold backdrop-blur-xs mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-[#A3B18A]" />
+          <div className="inline-flex flex-wrap items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 text-white text-xs md:text-sm font-semibold backdrop-blur-xs mb-2">
+            <GraduationCap className="w-3.5 h-3.5 text-[#A3B18A]" />
             <span>Ciclo Lectivo 2026 • Turno Activo</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight">
@@ -226,7 +259,7 @@ export const AdminDashboard: React.FC = () => {
                 Resumen de Cuotas y Cobranzas
               </h3>
               {pendingReviewsCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200 animate-pulse">
+                <span className="inline-flex flex-wrap items-center gap-2 px-2.5 py-0.5 rounded-full text-xs md:text-sm font-bold bg-amber-100 text-amber-900 border border-amber-200 animate-pulse">
                   {pendingReviewsCount} por revisar
                 </span>
               )}
@@ -307,8 +340,15 @@ export const AdminDashboard: React.FC = () => {
             Gestionar Registro de Asistencia
           </Link>
         </div>
+      </div>
 
-        {/* Medical & Allergies Alert Panel */}
+      {/* Interactive School Calendar Section */}
+      <div className="pt-2">
+        <SchoolCalendar />
+      </div>
+
+      {/* Bottom Grid: Medical Alerts & Recent Announcements */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-3xl border border-[#E9ECEF] shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">

@@ -1,16 +1,13 @@
 import React from 'react';
-import { 
-  LogOut, 
-  Menu
-} from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { NotificationDropdown } from './NotificationDropdown';
 
 interface HeaderProps {
-  onToggleSidebar?: () => void;
   title?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, title }) => {
+export const Header: React.FC<HeaderProps> = ({ title }) => {
   const { 
     currentUser, 
     userProfile, 
@@ -19,16 +16,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, title }) => {
   } = useAuth();
 
   return (
-    <header className="fixed top-0 right-0 left-0 lg:left-68 z-30 bg-white/70 backdrop-blur-md border-b border-[#E9ECEF]/70 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] px-4 sm:px-8 py-3.5 flex items-center justify-between transition-all duration-300 ease-in-out">
-      {/* Left: Mobile Menu Toggle & Title */}
-      <div className="flex items-center gap-3 min-w-0">
-        <button
-          onClick={onToggleSidebar}
-          className="lg:hidden p-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-white border border-[#E9ECEF] transition-colors shrink-0"
-          aria-label="Menú lateral"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+    <header className="fixed top-0 right-0 left-0 lg:left-68 z-30 bg-white/80 backdrop-blur-md border-b border-[#E9ECEF]/70 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] px-4 sm:px-8 py-3.5 flex items-center justify-between transition-all duration-300 ease-in-out">
+      {/* Left: Brand / Title (Mobile clean without hamburger) */}
+      <div className="flex items-center gap-2.5 min-w-0">
         <div className="truncate">
           <h1 className="text-base sm:text-xl font-bold text-[#1B4332] tracking-tight truncate">
             {title || 'Plataforma de Gestión'}
@@ -39,10 +29,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, title }) => {
         </div>
       </div>
 
-      {/* Right: Clean User Profile Pill & Logout */}
+      {/* Right: Notifications, User Profile Pill & Logout */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* Real-time Notifications Bell Dropdown */}
+        <NotificationDropdown />
+
         {/* User Profile Pill - Clean & Minimal */}
-        <div className="flex items-center gap-2 bg-white/90 px-2 sm:px-3 py-1.5 rounded-2xl border border-[#E9ECEF] shadow-2xs">
+        <div className="inline-flex flex-wrap items-center gap-2 bg-white/90 px-2 sm:px-3 py-1.5 rounded-full border border-[#E9ECEF] shadow-2xs text-xs md:text-sm">
           <div className="w-7 h-7 rounded-full bg-[#EBF3ED] text-[#245436] flex items-center justify-center font-bold text-xs shrink-0">
             {userProfile?.displayName?.charAt(0) || 'U'}
           </div>

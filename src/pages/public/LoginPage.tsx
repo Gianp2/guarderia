@@ -172,41 +172,45 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden min-h-[100dvh] bg-[#FDFBF7] flex flex-col justify-between py-3 sm:py-6 px-3 sm:px-4 font-['Plus_Jakarta_Sans',sans-serif]">
+    <div className="w-full max-w-full overflow-x-hidden min-h-[100dvh] bg-[#FDFBF7] flex flex-col justify-center items-center py-3 sm:py-5 px-3 sm:px-4 font-['Plus_Jakarta_Sans',sans-serif]">
       {/* Brand Header */}
-      <div className="w-full max-w-sm mx-auto text-center shrink-0">
-        <Link to="/" className="inline-flex items-center gap-2 mb-1.5 sm:mb-2 group">
-          <div className="w-10 h-10 rounded-2xl bg-[#52796F] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
-            <Baby className="w-6 h-6" />
+      <div className="w-full max-w-sm mx-auto text-center mb-2 shrink-0">
+        <Link to="/" className="inline-flex items-center gap-2 group">
+          <div className="w-9 h-9 rounded-2xl bg-[#52796F] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+            <Baby className="w-5 h-5" />
           </div>
           <div className="text-left">
-            <span className="text-lg font-black text-[#1B4332] tracking-tight block leading-tight">
+            <span className="text-base font-black text-[#1B4332] tracking-tight block leading-tight">
               Nido Cuidado
             </span>
-            <span className="text-[10px] font-bold text-[#52796F] block tracking-wide uppercase">
+            <span className="text-[9px] font-bold text-[#52796F] block tracking-wide uppercase">
               Plataforma Privada
             </span>
           </div>
         </Link>
-        <h2 className="text-xl sm:text-2xl font-black text-[#1B4332] tracking-tight leading-tight">
-          {selectedRoleType === 'parent' ? 'Ingreso para Familias' : 'Portal del Personal Docente'}
-        </h2>
-        <p className="text-[11px] sm:text-xs text-gray-500 max-w-xs mx-auto mt-0.5">
-          {selectedRoleType === 'parent' 
-            ? 'Seguimiento pedagógico, bitácora diaria y cuotas de tus hijos.'
-            : 'Gestión diaria de salas, asistencia, bitácora y novedades.'}
-        </p>
       </div>
 
       {/* Main Login Card - Compact & Fitted for Mobile */}
-      <div className="w-full max-w-sm mx-auto my-auto py-2">
-        <div className="bg-white py-5 px-5 sm:px-6 shadow-lg border border-[#EBECEF] rounded-3xl animate-fade-in">
+      <div className="w-full max-w-sm mx-auto">
+        <div className="bg-white pt-4 pb-5 px-5 sm:px-6 shadow-md border border-[#EBECEF] rounded-3xl animate-fade-in">
+          {/* Role Header right next to the form */}
+          <div className="text-center mb-3">
+            <h2 className="text-lg sm:text-xl font-black text-[#1B4332] tracking-tight leading-tight">
+              {selectedRoleType === 'parent' ? 'Ingreso para Familias' : 'Portal del Personal Docente'}
+            </h2>
+            <p className="text-[11px] sm:text-xs text-gray-500 max-w-xs mx-auto mt-0.5 leading-snug">
+              {selectedRoleType === 'parent' 
+                ? 'Seguimiento pedagógico, bitácora diaria y cuotas de tus hijos.'
+                : 'Gestión diaria de salas, asistencia, bitácora y novedades.'}
+            </p>
+          </div>
+
           {/* TWO VISUAL OPTIONS: PADRE/MADRE vs MAESTRA */}
-          <div className="mb-4">
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5 text-center">
+          <div className="mb-3">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 text-center">
               Seleccione su tipo de acceso institucional
             </label>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-[#FAF9F5] rounded-2xl border border-[#EBE7DF]">
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#FAF9F5] rounded-2xl border border-[#EBE7DF]">
               <button
                 type="button"
                 onClick={() => {
@@ -400,7 +404,7 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* Footer with Discreet/Hidden Admin Trigger in Rights */}
-      <footer className="w-full max-w-sm mx-auto text-center text-[11px] text-gray-400 py-1.5 shrink-0">
+      <footer className="w-full max-w-sm mx-auto text-center text-[11px] text-gray-400 mt-2.5 py-1 shrink-0">
         <div className="flex items-center justify-center gap-1">
           <span>© {new Date().getFullYear()} Nido Cuidado.</span>
           <span 

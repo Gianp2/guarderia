@@ -10,7 +10,6 @@ import {
   AlertCircle, 
   Eye, 
   CheckCircle2, 
-  Sparkles, 
   Users, 
   TrendingUp, 
   MessageSquare, 
@@ -52,18 +51,21 @@ import {
   INITIAL_PROGRESS_REPORTS, 
   INITIAL_ANNOUNCEMENTS 
 } from '../../services/seedData';
+import { dataService } from '../../services/dataService';
+import { pushNotificationService } from '../../services/pushNotificationService';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { SchoolCalendar } from '../../components/calendar/SchoolCalendar';
 import { 
   collection, 
   onSnapshot, 
   doc, 
   setDoc 
 } from 'firebase/firestore';
-import { db } from '../../services/firebase/config';
+import { db, auth } from '../../services/firebase/config';
 
 export const TeacherDashboard: React.FC = () => {
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
   const toast = useToast();
 
   // Teacher assigned rooms
@@ -72,12 +74,12 @@ export const TeacherDashboard: React.FC = () => {
     : ['room-cuna', 'room-1ano'];
 
   // State from Firestore with Seed Fallback
-  const [roomsList, setRoomsList] = useState<Room[]>(INITIAL_ROOMS);
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
-  const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE);
-  const [activitiesList, setActivitiesList] = useState<Activity[]>(INITIAL_ACTIVITIES);
-  const [reportsList, setReportsList] = useState<ProgressReport[]>(INITIAL_PROGRESS_REPORTS);
-  const [announcementsList, setAnnouncementsList] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
+  const [roomsList, setRoomsList] = useState<Room[]>(() => dataService.getRooms());
+  const [childrenList, setChildrenList] = useState<Child[]>(() => dataService.getChildren());
+  const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(() => dataService.getAttendance());
+  const [activitiesList, setActivitiesList] = useState<Activity[]>(() => dataService.getActivities());
+  const [reportsList, setReportsList] = useState<ProgressReport[]>(() => dataService.getProgressReports());
+  const [announcementsList, setAnnouncementsList] = useState<Announcement[]>(() => dataService.getAnnouncements());
 
   // Filter teacher's assigned rooms
   const myRooms = roomsList.filter(r => assignedRoomIds.includes(r.id));
@@ -105,7 +107,7 @@ export const TeacherDashboard: React.FC = () => {
     category: 'activity' as ActivityCategory,
     description: 'Dinámica grupal de exploración sensorial, ronda de canciones y juego cooperativo en sala.',
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    photoUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80'
+    isImportant: false
   });
 
   // Card view modals
@@ -117,7 +119,7 @@ export const TeacherDashboard: React.FC = () => {
     title: '',
     category: 'meal' as ActivityCategory,
     description: '',
-    photoUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80',
+    isImportant: false,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
 
@@ -143,63 +145,44 @@ export const TeacherDashboard: React.FC = () => {
     importance: 'normal' as ImportanceLevel
   });
 
-  // Synchronize in Realtime with Firestore
+  // Synchronize in Realtime with centralized dataService and Firestore
   useEffect(() => {
-    const unsubRooms = onSnapshot(collection(db, 'rooms'), (snap) => {
-      if (!snap.empty) {
-        const loaded: Room[] = [];
-        snap.forEach(d => loaded.push(d.data() as Room));
-        setRoomsList(loaded);
-      }
-    }, () => {/* use fallback */});
+    // Initial fetch from dataService
+    setRoomsList(dataService.getRooms());
+    setChildrenList(dataService.getChildren());
+    setAttendanceList(dataService.getAttendance());
+    setActivitiesList(dataService.getActivities());
+    setReportsList(dataService.getProgressReports());
+    setAnnouncementsList(dataService.getAnnouncements());
 
-    const unsubChildren = onSnapshot(collection(db, 'children'), (snap) => {
-      if (!snap.empty) {
-        const loaded: Child[] = [];
-        snap.forEach(d => loaded.push(d.data() as Child));
-        setChildrenList(loaded);
-      }
-    }, () => {/* use fallback */});
+    const unsub1 = dataService.subscribe('activities', () => {
+      setActivitiesList(dataService.getActivities());
+    });
+    const unsub2 = dataService.subscribe('attendance', () => {
+      setAttendanceList(dataService.getAttendance());
+    });
+    const unsub3 = dataService.subscribe('announcements', () => {
+      setAnnouncementsList(dataService.getAnnouncements());
+    });
+    const unsub4 = dataService.subscribe('reports', () => {
+      setReportsList(dataService.getProgressReports());
+    });
+    const unsub5 = dataService.subscribe('children', () => {
+      setChildrenList(dataService.getChildren());
+    });
+    const unsub6 = dataService.subscribe('rooms', () => {
+      setRoomsList(dataService.getRooms());
+    });
 
-    const unsubAtt = onSnapshot(collection(db, 'attendance'), (snap) => {
-      if (!snap.empty) {
-        const loaded: AttendanceRecord[] = [];
-        snap.forEach(d => loaded.push(d.data() as AttendanceRecord));
-        setAttendanceList(loaded);
-      }
-    }, () => {/* use fallback */});
-
-    const unsubAct = onSnapshot(collection(db, 'activities'), (snap) => {
-      if (!snap.empty) {
-        const loaded: Activity[] = [];
-        snap.forEach(d => loaded.push(d.data() as Activity));
-        setActivitiesList(loaded);
-      }
-    }, () => {/* use fallback */});
-
-    const unsubReports = onSnapshot(collection(db, 'progressReports'), (snap) => {
-      if (!snap.empty) {
-        const loaded: ProgressReport[] = [];
-        snap.forEach(d => loaded.push(d.data() as ProgressReport));
-        setReportsList(loaded);
-      }
-    }, () => {/* use fallback */});
-
-    const unsubAnn = onSnapshot(collection(db, 'announcements'), (snap) => {
-      if (!snap.empty) {
-        const loaded: Announcement[] = [];
-        snap.forEach(d => loaded.push(d.data() as Announcement));
-        setAnnouncementsList(loaded);
-      }
-    }, () => {/* use fallback */});
+    dataService.syncFromFirestore();
 
     return () => {
-      unsubRooms();
-      unsubChildren();
-      unsubAtt();
-      unsubAct();
-      unsubReports();
-      unsubAnn();
+      unsub1();
+      unsub2();
+      unsub3();
+      unsub4();
+      unsub5();
+      unsub6();
     };
   }, []);
 
@@ -209,6 +192,10 @@ export const TeacherDashboard: React.FC = () => {
       setSelectedRoomId(myRooms[0].id);
     }
   }, [myRooms, selectedRoomId]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [selectedRoomId]);
 
   // Active room data
   const activeRoom = myRooms.find(r => r.id === selectedRoomId) || myRooms[0] || {
@@ -274,13 +261,8 @@ export const TeacherDashboard: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
 
-    setAttendanceList(prev => [newRecord, ...prev.filter(a => !(a.childId === child.id && a.date === todayStr))]);
-
-    try {
-      await setDoc(doc(db, 'attendance', newRecord.id), newRecord);
-    } catch (err) {
-      console.warn('Saved attendance locally:', err);
-    }
+    await dataService.saveAttendance(newRecord);
+    setAttendanceList(dataService.getAttendance());
 
     const statusLabel = status === 'present' 
       ? `Presente (${nowTime} hs)` 
@@ -326,19 +308,11 @@ export const TeacherDashboard: React.FC = () => {
         updatedAt: new Date().toISOString()
       };
       newRecords.push(rec);
-
-      try {
-        await setDoc(doc(db, 'attendance', rec.id), rec);
-      } catch (err) {
-        console.warn('Saved attendance locally:', err);
-      }
+      await dataService.saveAttendance(rec);
     }
 
     if (newRecords.length > 0) {
-      setAttendanceList(prev => [
-        ...newRecords,
-        ...prev.filter(a => !newRecords.some(nr => nr.childId === a.childId && a.date === todayStr))
-      ]);
+      setAttendanceList(dataService.getAttendance());
       toast.success(
         'Asistencia general completada',
         `Se marcó Presente a todos los alumnos de ${activeRoom.name}`
@@ -389,7 +363,7 @@ export const TeacherDashboard: React.FC = () => {
         title: existingAct.title,
         category: existingAct.category,
         description: existingAct.description,
-        photoUrl: existingAct.photoUrl || '',
+        isImportant: !!existingAct.isImportant,
         time: existingAct.time || nowTime
       });
     } else {
@@ -416,7 +390,7 @@ export const TeacherDashboard: React.FC = () => {
         title: defaultTitle,
         category: category,
         description: defaultDesc,
-        photoUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80',
+        isImportant: false,
         time: nowTime
       });
     }
@@ -470,20 +444,22 @@ export const TeacherDashboard: React.FC = () => {
       roomId: selectedChild.roomId,
       roomName: selectedChild.roomName || activeRoom?.name,
       childIds: [selectedChild.id],
-      photoUrl: activityForm.photoUrl || undefined,
+      isImportant: !!activityForm.isImportant,
       authorUserId: teacherId,
       authorName: teacherName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    setActivitiesList(prev => [newRecord, ...prev.filter(a => a.id !== recId)]);
+    await dataService.saveActivity(newRecord);
+    setActivitiesList(dataService.getActivities());
 
-    try {
-      await setDoc(doc(db, 'activities', recId), newRecord);
-    } catch (err) {
-      console.warn('Saved locally:', err);
-    }
+    // Disparar alerta push instantánea a familias vía Service Worker
+    pushNotificationService.notifyNewActivity(
+      newRecord,
+      `${selectedChild.firstName} ${selectedChild.lastName}`,
+      activeRoom?.name
+    ).catch(() => {});
 
     toast.success(
       editingRecordId ? 'Registro actualizado' : 'Registro guardado',
@@ -516,20 +492,22 @@ export const TeacherDashboard: React.FC = () => {
       roomId: activeRoom.id,
       roomName: activeRoom.name,
       childIds: roomChildren.map(c => c.id),
-      photoUrl: groupActivityForm.photoUrl || undefined,
+      isImportant: !!groupActivityForm.isImportant,
       authorUserId: teacherId,
       authorName: teacherName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    setActivitiesList(prev => [newRecord, ...prev]);
+    await dataService.saveActivity(newRecord);
+    setActivitiesList(dataService.getActivities());
 
-    try {
-      await setDoc(doc(db, 'activities', recId), newRecord);
-    } catch (err) {
-      console.warn('Saved locally:', err);
-    }
+    // Disparar alerta push instantánea a familias de la sala vía Service Worker
+    pushNotificationService.notifyNewActivity(
+      newRecord,
+      undefined,
+      activeRoom.name
+    ).catch(() => {});
 
     toast.success(
       'Actividad grupal guardada',
@@ -566,13 +544,8 @@ export const TeacherDashboard: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
 
-    setReportsList(prev => [newRecord, ...prev.filter(r => r.id !== recId)]);
-
-    try {
-      await setDoc(doc(db, 'progressReports', recId), newRecord);
-    } catch (err) {
-      console.warn('Saved locally:', err);
-    }
+    await dataService.saveProgressReport(newRecord);
+    setReportsList(dataService.getProgressReports());
 
     toast.success(
       editingRecordId ? 'Avance pedagógico actualizado' : 'Avance pedagógico guardado',
@@ -611,13 +584,20 @@ export const TeacherDashboard: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
 
-    setAttendanceList(prev => [newRecord, ...prev.filter(a => !(a.childId === selectedChild.id && a.date === todayStr))]);
+    await dataService.saveAttendance(newRecord);
+    setAttendanceList(dataService.getAttendance());
 
-    try {
-      await setDoc(doc(db, 'attendance', recId), newRecord);
-    } catch (err) {
-      console.warn('Saved locally:', err);
-    }
+    // Disparar alerta push instantánea de asistencia vía Service Worker
+    const statusLabel = newRecord.status === 'present' 
+      ? 'Presente en sala' 
+      : newRecord.status === 'absent' 
+      ? 'Ausente en jornada' 
+      : 'Inasistencia justificada';
+    pushNotificationService.notifyAttendance(
+      newRecord.childName,
+      statusLabel,
+      newRecord.checkInTime
+    ).catch(() => {});
 
     toast.success(
       'Asistencia y notas guardadas',
@@ -654,13 +634,8 @@ export const TeacherDashboard: React.FC = () => {
       createdAt: new Date().toISOString()
     };
 
-    setAnnouncementsList(prev => [newRecord, ...prev]);
-
-    try {
-      await setDoc(doc(db, 'announcements', recId), newRecord);
-    } catch (err) {
-      console.warn('Saved locally:', err);
-    }
+    await dataService.saveAnnouncement(newRecord);
+    setAnnouncementsList(dataService.getAnnouncements());
 
     toast.info(
       'Aviso publicado a familias',
@@ -676,15 +651,15 @@ export const TeacherDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto pb-12">
+    <div className="space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-8">
       {/* 1. SIMPLE & WELCOMING TEACHER BANNER */}
-      <div className="bg-[#1B4332] text-white p-5 sm:p-7 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 border border-[#2D6A4F]">
+      <div className="bg-[#1B4332] text-white p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 border border-[#2D6A4F]">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-2xl text-white shadow-xs shrink-0">
             {userProfile?.displayName ? userProfile.displayName.charAt(0) : 'D'}
           </div>
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-[#D8E4DA] text-xs font-semibold backdrop-blur-xs mb-1">
+            <div className="inline-flex flex-wrap items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 text-[#D8E4DA] text-xs md:text-sm font-semibold backdrop-blur-xs mb-1">
               <GraduationCap className="w-3.5 h-3.5 text-[#A3B18A]" />
               <span>Docente a Cargo • {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
             </div>
@@ -843,19 +818,19 @@ export const TeacherDashboard: React.FC = () => {
               />
             </div>
 
-            {/* Filter Pills: 2x2 grid on mobile, horizontal segmented row on sm+ */}
-            <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 p-1 bg-[#FAF9F5] rounded-2xl border border-gray-200/80 text-xs font-semibold">
+            {/* Filter Pills */}
+            <div className="inline-flex flex-wrap gap-2 text-xs md:text-sm p-1.5 bg-[#FAF9F5] rounded-2xl border border-gray-200/80 font-semibold">
               <button
                 type="button"
                 onClick={() => setFilterStatus('all')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                className={`inline-flex flex-wrap items-center justify-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm transition-all cursor-pointer text-center active:scale-95 ${
                   filterStatus === 'all'
                     ? 'bg-[#1B4332] text-white shadow-xs font-bold'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
                 }`}
               >
                 <span>Todos</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                <span className={`px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black ${
                   filterStatus === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
                 }`}>
                   {roomChildren.length}
@@ -865,14 +840,14 @@ export const TeacherDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setFilterStatus('present')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                className={`inline-flex flex-wrap items-center justify-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm transition-all cursor-pointer text-center active:scale-95 ${
                   filterStatus === 'present'
                     ? 'bg-emerald-600 text-white shadow-xs font-bold'
                     : 'text-gray-600 hover:text-emerald-800 hover:bg-emerald-50/50'
                 }`}
               >
                 <span>Presentes</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                <span className={`px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black ${
                   filterStatus === 'present' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-800'
                 }`}>
                   {presentCount}
@@ -882,14 +857,14 @@ export const TeacherDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setFilterStatus('unregistered')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                className={`inline-flex flex-wrap items-center justify-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm transition-all cursor-pointer text-center active:scale-95 ${
                   filterStatus === 'unregistered'
                     ? 'bg-gray-800 text-white shadow-xs font-bold'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
                 }`}
               >
                 <span>Sin Registrar</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                <span className={`px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black ${
                   filterStatus === 'unregistered' ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-600'
                 }`}>
                   {unregisteredCount}
@@ -899,7 +874,7 @@ export const TeacherDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setFilterStatus('allergies')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-center active:scale-95 ${
+                className={`inline-flex flex-wrap items-center justify-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm transition-all cursor-pointer text-center active:scale-95 ${
                   filterStatus === 'allergies'
                     ? 'bg-amber-600 text-white shadow-xs font-bold'
                     : 'text-gray-600 hover:text-amber-900 hover:bg-amber-50/50'
@@ -1109,6 +1084,12 @@ export const TeacherDashboard: React.FC = () => {
                               <Badge variant={act.category === 'meal' ? 'amber' : act.category === 'hygiene' ? 'green' : 'blue'} size="sm">
                                 {act.category === 'meal' ? 'Alimentación' : act.category === 'hygiene' ? 'Higiene' : 'Actividad'}
                               </Badge>
+                              {act.isImportant && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                  <AlertCircle className="w-2.5 h-2.5 text-amber-700" />
+                                  <span>Importante</span>
+                                </span>
+                              )}
                             </div>
                             <p className="text-gray-500 text-[11px] line-clamp-1">{act.description}</p>
                           </div>
@@ -1163,6 +1144,12 @@ export const TeacherDashboard: React.FC = () => {
                       <Badge variant={act.category === 'meal' ? 'amber' : act.category === 'hygiene' ? 'green' : 'blue'} size="sm">
                         {act.category === 'meal' ? 'Alimentación' : act.category === 'hygiene' ? 'Higiene' : 'Actividad'}
                       </Badge>
+                      {act.isImportant && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                          <AlertCircle className="w-2.5 h-2.5 text-amber-700" />
+                          <span>Importante</span>
+                        </span>
+                      )}
                     </div>
                     <span className="text-gray-500 text-[11px] line-clamp-1 mt-0.5">{act.description}</span>
                     <span className="text-[10px] text-gray-400 block mt-0.5">Por: {act.authorName}</span>
@@ -1223,7 +1210,12 @@ export const TeacherDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 6. INDIVIDUAL CHILD RECORD MODAL (WITH QUICK PRESET CHIPS, NO SIESTAS) */}
+      {/* 6. INTERACTIVE SCHOOL CALENDAR (EVENTS, HOLIDAYS & PARENT MEETINGS) */}
+      <div className="pt-2">
+        <SchoolCalendar defaultRoomFilter={activeRoom.id} />
+      </div>
+
+      {/* 7. INDIVIDUAL CHILD RECORD MODAL (WITH QUICK PRESET CHIPS, NO SIESTAS) */}
       <Modal
         isOpen={isManageModalOpen}
         onClose={() => {
@@ -1349,7 +1341,7 @@ export const TeacherDashboard: React.FC = () => {
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                     Opciones Rápidas (Hacé clic para autocompletar):
                   </label>
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                  <div className="inline-flex flex-wrap gap-2 text-xs md:text-sm">
                     {activeManageTab === 'meal' && (
                       <>
                         <button
@@ -1359,7 +1351,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Colación de Frutas Frescas',
                             description: 'Comió toda la porción de manzana y banana con excelente apetito e hidratación.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🍎 Colación de frutas (completa)
                         </button>
@@ -1370,7 +1362,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Almuerzo Nutritivo Supervisado',
                             description: 'Almuerzo completo con verduras y puré. Muy buena aceptación del menú.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🍲 Almuerzo balanceado
                         </button>
@@ -1381,7 +1373,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Merienda de la Tarde',
                             description: 'Merienda con yogur y cereales. Aceptó la mitad de la porción con agua.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🥛 Merienda con yogur
                         </button>
@@ -1397,7 +1389,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Taller de Pintura y Colores',
                             description: 'Exploración dactilar con pinturas al agua no tóxicas. Disfrutó mucho la actividad.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🎨 Taller de Pintura
                         </button>
@@ -1408,7 +1400,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Juegos de Encastre y Motricidad',
                             description: 'Manipulación de bloques de encastre y coordinación óculo-manual.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🧩 Bloques de encastre
                         </button>
@@ -1419,7 +1411,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Ronda Musical y Canciones',
                             description: 'Participación en rondas con instrumentos musicales sencillos y baile.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100/90 text-sky-900 border border-sky-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🎵 Ronda Musical
                         </button>
@@ -1435,7 +1427,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Cambio de Pañal y Muda Limpia',
                             description: 'Muda completa sin rozaduras. Se aplicó crema protectora.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           💧 Cambio de Pañal
                         </button>
@@ -1446,7 +1438,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Control de Esfínteres',
                             description: 'Uso exitoso del bacín/inodoro adaptado. Gran progreso en autonomía.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🚽 Control de Esfínteres
                         </button>
@@ -1457,7 +1449,7 @@ export const TeacherDashboard: React.FC = () => {
                             title: 'Higiene de Manos y Cara',
                             description: 'Lavado con agua y jabón antes de comer y tras el juego.'
                           }))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-900 border border-emerald-200/80 text-xs md:text-sm font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                         >
                           🧼 Higiene de Manos
                         </button>
@@ -1509,18 +1501,16 @@ export const TeacherDashboard: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Foto Adjunta (Opcional)
-                  </label>
+                {/* Checkbox Importante */}
+                <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs font-semibold text-amber-900">
                   <input
-                    type="url"
-                    value={activityForm.photoUrl}
-                    onChange={(e) => setActivityForm(prev => ({ ...prev, photoUrl: e.target.value }))}
-                    placeholder="URL de imagen..."
-                    className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
+                    type="checkbox"
+                    checked={!!activityForm.isImportant}
+                    onChange={(e) => setActivityForm(prev => ({ ...prev, isImportant: e.target.checked }))}
+                    className="w-4 h-4 rounded text-[#1B4332] focus:ring-[#52796F]"
                   />
-                </div>
+                  <span>Marcar como importante (destacar aviso para la familia)</span>
+                </label>
 
                 <div className="flex items-center justify-between pt-3 border-t border-gray-100 text-[11px] text-gray-500">
                   <span>Alumno: <strong>{selectedChild?.firstName} {selectedChild?.lastName}</strong></span>
@@ -1832,18 +1822,16 @@ export const TeacherDashboard: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Foto de la Sala (Opcional)
-            </label>
+          {/* Checkbox Importante */}
+          <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs font-semibold text-amber-900">
             <input
-              type="url"
-              value={groupActivityForm.photoUrl}
-              onChange={(e) => setGroupActivityForm(prev => ({ ...prev, photoUrl: e.target.value }))}
-              placeholder="https://images.unsplash.com/..."
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-[#52796F]"
+              type="checkbox"
+              checked={!!groupActivityForm.isImportant}
+              onChange={(e) => setGroupActivityForm(prev => ({ ...prev, isImportant: e.target.checked }))}
+              className="w-4 h-4 rounded text-[#1B4332] focus:ring-[#52796F]"
             />
-          </div>
+            <span>Marcar como importante (destacar aviso para las familias)</span>
+          </label>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
             <button
@@ -1875,24 +1863,21 @@ export const TeacherDashboard: React.FC = () => {
         {viewActivityDetail && (
           <div className="space-y-4 text-xs">
             <div className="p-4 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1]">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 <Badge variant={viewActivityDetail.category === 'meal' ? 'amber' : viewActivityDetail.category === 'hygiene' ? 'green' : 'blue'} size="sm">
                   {viewActivityDetail.category === 'meal' ? 'Alimentación' : viewActivityDetail.category === 'hygiene' ? 'Higiene' : 'Actividad'}
                 </Badge>
+                {viewActivityDetail.isImportant && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                    <AlertCircle className="w-3 h-3 text-amber-700" />
+                    <span>Importante</span>
+                  </span>
+                )}
                 <span className="font-bold text-[#1B4332] text-sm">{viewActivityDetail.title}</span>
               </div>
               <p className="text-gray-700 leading-relaxed whitespace-pre-line text-xs sm:text-sm">
                 {viewActivityDetail.description}
               </p>
-              {viewActivityDetail.photoUrl && (
-                <div className="pt-3">
-                  <img
-                    src={viewActivityDetail.photoUrl}
-                    alt={viewActivityDetail.title}
-                    className="w-full h-44 object-cover rounded-xl border border-gray-200"
-                  />
-                </div>
-              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

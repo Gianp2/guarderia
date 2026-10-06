@@ -18,14 +18,15 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { Child, Room, EnrollmentStatus } from '../../types';
 import { INITIAL_CHILDREN, INITIAL_ROOMS, INITIAL_FAMILIES } from '../../services/seedData';
+import { dataService } from '../../services/dataService';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 
 export const ChildrenManagement: React.FC = () => {
   const toast = useToast();
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
-  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const [childrenList, setChildrenList] = useState<Child[]>(() => dataService.getChildren());
+  const [rooms, setRooms] = useState<Room[]>(() => dataService.getRooms());
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRoom, setSelectedRoom] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -53,28 +54,22 @@ export const ChildrenManagement: React.FC = () => {
   });
 
   useEffect(() => {
-    const loadData = async () => {
-      if (!auth?.currentUser) return;
-      try {
-        const [cSnap, rSnap] = await Promise.all([
-          getDocs(collection(db, 'children')).catch(() => null),
-          getDocs(collection(db, 'rooms')).catch(() => null),
-        ]);
-        if (cSnap && !cSnap.empty) {
-          const list: Child[] = [];
-          cSnap.forEach(d => list.push(d.data() as Child));
-          setChildrenList(list);
-        }
-        if (rSnap && !rSnap.empty) {
-          const list: Room[] = [];
-          rSnap.forEach(d => list.push(d.data() as Room));
-          setRooms(list);
-        }
-      } catch (err) {
-        console.warn('Using seeded children data:', err);
-      }
+    setChildrenList(dataService.getChildren());
+    setRooms(dataService.getRooms());
+
+    const unsubChildren = dataService.subscribe('children', () => {
+      setChildrenList(dataService.getChildren());
+    });
+    const unsubRooms = dataService.subscribe('rooms', () => {
+      setRooms(dataService.getRooms());
+    });
+
+    dataService.syncFromFirestore();
+
+    return () => {
+      unsubChildren();
+      unsubRooms();
     };
-    loadData();
   }, []);
 
   const handleOpenCreate = () => {
@@ -139,6 +134,8 @@ export const ChildrenManagement: React.FC = () => {
     } else {
       setChildrenList(prev => [newRecord, ...prev]);
     }
+
+    await dataService.saveChild(newRecord);
 
     // Persist to Firestore if available
     try {

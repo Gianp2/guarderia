@@ -260,6 +260,30 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "feeId", "childId", "amount", "method", "status", "payerUserId"]
+    },
+    "calendarEvents": {
+      "title": "CalendarEvent",
+      "description": "School events, national holidays, and parent meetings scheduled in the calendar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "type": { "type": "string", "enum": ["school_event", "holiday", "parent_meeting"] },
+        "date": { "type": "string", "maxLength": 32 },
+        "endDate": { "type": "string", "maxLength": 32 },
+        "startTime": { "type": "string", "maxLength": 32 },
+        "endTime": { "type": "string", "maxLength": 32 },
+        "location": { "type": "string", "maxLength": 128 },
+        "targetRoomId": { "type": "string", "maxLength": 128 },
+        "targetRoomName": { "type": "string", "maxLength": 128 },
+        "isImportant": { "type": "boolean" },
+        "createdByUserId": { "type": "string", "maxLength": 128 },
+        "createdByName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "type", "date"]
     }
   },
   "firestore": {
@@ -310,6 +334,10 @@
     "/payments/{paymentId}": {
       "schema": "payments",
       "description": "Transfer receipts and verified Mercado Pago payments"
+    },
+    "/calendarEvents/{eventId}": {
+      "schema": "calendarEvents",
+      "description": "School events, national holidays, and parent meetings scheduled in the calendar"
     }
   }
 }

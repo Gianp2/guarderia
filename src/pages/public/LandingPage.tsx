@@ -6,7 +6,6 @@ import {
   Heart, 
   Lock, 
   Clock, 
-  Sparkles, 
   ArrowRight,
   Shield,
   UserCheck,
@@ -57,7 +56,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Hero Section */}
       <section className="px-6 sm:px-12 pt-10 sm:pt-16 pb-16 sm:pb-24 max-w-5xl mx-auto text-center flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#EBF3ED] text-[#245436] text-xs font-semibold mb-6 border border-[#D1E4D7] animate-fade-in">
+        <div className="inline-flex flex-wrap items-center gap-2 px-4 py-1.5 rounded-full bg-[#EBF3ED] text-[#245436] text-xs md:text-sm font-semibold mb-6 border border-[#D1E4D7] animate-fade-in">
           <ShieldCheck className="w-4 h-4 text-[#52796F]" />
           <span>Plataforma Segura para Familias y Educadores</span>
         </div>

@@ -105,10 +105,13 @@ export interface Family {
 }
 
 // ==========================================
-// SALAS Y ESPACIOS (ROOM)
+// SALAS Y ESPACIOS (ROOM) - SISTEMA ARGENTINO
 // ==========================================
+export type ArgentineEducationCycle = 'Jardín Maternal' | 'Jardín de Infantes';
+export type ArgentineShift = 'Turno Mañana' | 'Turno Tarde' | 'Jornada Completa' | 'Jornada Extendida';
+
 /**
- * Entidad de Sala Pedagógica
+ * Entidad de Sala Pedagógica (Estructura adaptada al Nivel Inicial de Argentina)
  */
 export interface Room {
   id: string;
@@ -120,6 +123,9 @@ export interface Room {
   assignedTeacherIds: string[]; // UIDs de docentes asignados a la sala
   status: 'active' | 'inactive';
   schedule?: string;
+  cycle?: ArgentineEducationCycle; // 'Jardín Maternal' | 'Jardín de Infantes'
+  shift?: ArgentineShift;          // 'Turno Mañana' | 'Turno Tarde' | 'Jornada Completa'
+  symbolicName?: string;          // Ej: "Sala Celeste", "Solcitos", "Sala Verde"
   createdAt?: string;
   updatedAt?: string;
 }
@@ -137,6 +143,7 @@ export interface Attendance {
   childId: string;
   childName: string;
   roomId: string;
+  roomName?: string;
   date: string; // Formato YYYY-MM-DD
   status: AttendanceStatus;
   checkInTime?: string;  // Formato HH:MM
@@ -175,10 +182,10 @@ export interface Activity {
   time?: string; // Formato HH:MM
   endDate?: string; // Para eventos que abarcan múltiples fechas o horario de cierre
   isUpcoming?: boolean; // Para eventos futuros y próximas actividades
+  isImportant?: boolean; // Indicador explícito si la docente marcó la actividad como importante
   roomId: string;
   roomName?: string;
   childIds?: string[]; // IDs de niños específicos, o vacío si aplica a toda la sala
-  photoUrl?: string;
   authorUserId: string;
   authorName: string;
   createdAt?: string;
@@ -192,12 +199,14 @@ export type NotificationType =
   | 'fee_reminder'       // Recordatorio de cuota
   | 'due_date'           // Aviso de vencimiento
   | 'payment_pending'    // Pago pendiente
-  | 'activity'           // Actividad registrada
+  | 'activity'           // Actividad o bitácora pedagógica
+  | 'attendance'         // Asistencia y permanencia (ingreso / egreso)
+  | 'summary'            // Resumen diario consolidado
   | 'event'              // Evento o fecha importante
   | 'announcement'       // Comunicado importante
   | 'general';           // Aviso general
 
-export type NotificationTargetType = 'all' | 'room' | 'family';
+export type NotificationTargetType = 'all' | 'room' | 'family' | 'child';
 
 export interface InternalNotification {
   id: string;
@@ -209,6 +218,11 @@ export interface InternalNotification {
   targetRoomName?: string;
   targetFamilyId?: string;
   targetFamilyName?: string;
+  targetChildId?: string;
+  targetChildName?: string;
+  category?: string;
+  url?: string;
+  metadata?: Record<string, any>;
   senderUserId: string;
   senderName: string;
   senderRole: UserRole;
@@ -239,6 +253,30 @@ export interface Announcement {
   authorName: string;
   publishDate: string;
   expiresAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ==========================================
+// CALENDARIO ESCOLAR (CALENDAR EVENT)
+// ==========================================
+export type CalendarEventType = 'school_event' | 'holiday' | 'parent_meeting';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  type: CalendarEventType;
+  date: string; // Formato YYYY-MM-DD
+  endDate?: string; // Formato YYYY-MM-DD opcional
+  startTime?: string; // Formato HH:MM
+  endTime?: string; // Formato HH:MM
+  location?: string; // Ej: "Salón de Actos", "Virtual por Zoom", "Sala Cuna"
+  targetRoomId?: string; // 'all' o roomId específico
+  targetRoomName?: string;
+  isImportant?: boolean;
+  createdByUserId?: string;
+  createdByName?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -399,4 +437,26 @@ export const GUARDERIA_BANK_DETAILS: GuarderiaBankDetails = {
   alias: 'NIDO.CUIDADO.PAGOS',
   instructions: 'Por favor indicar en el concepto el nombre y apellido del niño/a. Una vez realizada la transferencia, suba el comprobante digital (PDF o foto) en este panel para validación administrativa.'
 };
+
+// ==========================================
+// NOTIFICACIONES PUSH & SERVICE WORKER
+// ==========================================
+export interface PushNotificationPreferences {
+  enabled: boolean;
+  notifyActivities: boolean;
+  notifyDailySummary: boolean;
+  notifyAttendance: boolean;
+  notifyUrgent: boolean;
+}
+
+export interface PushNotificationSubscription {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  childId?: string;
+  endpoint?: string;
+  preferences: PushNotificationPreferences;
+  createdAt: string;
+  updatedAt: string;
+}
 

@@ -19,6 +19,7 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { AttendanceRecord, Child, Room, AttendanceStatus } from '../../types';
 import { INITIAL_ATTENDANCE, INITIAL_CHILDREN, INITIAL_ROOMS } from '../../services/seedData';
+import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
@@ -27,9 +28,9 @@ import { Modal } from '../../components/common/Modal';
 export const AttendancePage: React.FC = () => {
   const { role, userProfile } = useAuth();
   const toast = useToast();
-  const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE);
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
-  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(() => dataService.getAttendance());
+  const [childrenList, setChildrenList] = useState<Child[]>(() => dataService.getChildren());
+  const [rooms, setRooms] = useState<Room[]>(() => dataService.getRooms());
   
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -55,34 +56,28 @@ export const AttendancePage: React.FC = () => {
   const canEdit = role === 'admin' || role === 'teacher';
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!auth?.currentUser) return;
-      try {
-        const [aSnap, cSnap, rSnap] = await Promise.all([
-          getDocs(collection(db, 'attendance')).catch(() => null),
-          getDocs(collection(db, 'children')).catch(() => null),
-          getDocs(collection(db, 'rooms')).catch(() => null),
-        ]);
-        if (aSnap && !aSnap.empty) {
-          const list: AttendanceRecord[] = [];
-          aSnap.forEach(d => list.push(d.data() as AttendanceRecord));
-          setAttendanceList(list);
-        }
-        if (cSnap && !cSnap.empty) {
-          const list: Child[] = [];
-          cSnap.forEach(d => list.push(d.data() as Child));
-          setChildrenList(list);
-        }
-        if (rSnap && !rSnap.empty) {
-          const list: Room[] = [];
-          rSnap.forEach(d => list.push(d.data() as Room));
-          setRooms(list);
-        }
-      } catch (err) {
-        console.warn('Using seeded attendance:', err);
-      }
+    // Initial fetch from dataService
+    setAttendanceList(dataService.getAttendance());
+    setChildrenList(dataService.getChildren());
+    setRooms(dataService.getRooms());
+
+    const unsubAttendance = dataService.subscribe('attendance', () => {
+      setAttendanceList(dataService.getAttendance());
+    });
+    const unsubChildren = dataService.subscribe('children', () => {
+      setChildrenList(dataService.getChildren());
+    });
+    const unsubRooms = dataService.subscribe('rooms', () => {
+      setRooms(dataService.getRooms());
+    });
+
+    dataService.syncFromFirestore();
+
+    return () => {
+      unsubAttendance();
+      unsubChildren();
+      unsubRooms();
     };
-    fetchData();
   }, []);
 
   const handleOpenAdd = (child?: Child) => {
@@ -134,6 +129,8 @@ export const AttendancePage: React.FC = () => {
       setAttendanceList(prev => [newRecord, ...prev.filter(a => !(a.childId === formData.childId && a.date === formData.date))]);
     }
 
+    await dataService.saveAttendance(newRecord);
+
     try {
       await setDoc(doc(db, 'attendance', id), newRecord);
     } catch (err) {
@@ -175,8 +172,8 @@ export const AttendancePage: React.FC = () => {
   const justifiedCount = filteredAttendance.filter(a => a.status === 'justified').length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-[#1B4332] tracking-tight">
             Control de Asistencia Diaria
@@ -456,7 +453,7 @@ export const AttendancePage: React.FC = () => {
             <h4 className="text-base font-bold text-[#1B4332]">Asistencia registrada</h4>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-4">
+          <form onSubmit={handleSave} className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Alumno *</label>
               <select
@@ -563,7 +560,7 @@ export const AttendancePage: React.FC = () => {
         maxWidth="md"
       >
         {viewAttendanceRecord && (
-          <div className="space-y-4 text-xs">
+          <div className="space-y-4 text-xs md:text-sm max-h-[85vh] overflow-y-auto pr-1">
             <div className="p-4 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1] flex items-center justify-between">
               <div>
                 <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider mb-0.5">Estado</span>

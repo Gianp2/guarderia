@@ -8,7 +8,7 @@ import {
   updateDoc,
   deleteDoc
 } from 'firebase/firestore';
-import { db } from '../../services/firebase/config';
+import { db, auth } from '../../services/firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { 
@@ -20,6 +20,11 @@ import {
   PaymentMethod,
   GUARDERIA_BANK_DETAILS 
 } from '../../types';
+import { 
+  INITIAL_FEES, 
+  INITIAL_ROOMS, 
+  INITIAL_CHILDREN 
+} from '../../services/seedData';
 import { 
   getMercadoPagoStatus, 
   reviewTransferPayment, 
@@ -52,13 +57,13 @@ import {
 } from 'lucide-react';
 
 export function FeesManagement() {
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
   const toast = useToast();
-  const [fees, setFees] = useState<Fee[]>([]);
+  const [fees, setFees] = useState<Fee[]>(INITIAL_FEES as Fee[]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [children, setChildren] = useState<Child[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [children, setChildren] = useState<Child[]>(INITIAL_CHILDREN);
+  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const [loading, setLoading] = useState(false);
 
   // Mercado Pago Service Status
   const [mpStatus, setMpStatus] = useState<MPStatusResponse | null>(null);
@@ -117,15 +122,32 @@ export function FeesManagement() {
 
   // Load Realtime Data
   useEffect(() => {
+    // Check MP Status
+    checkMp();
+
+    // Only subscribe to Firestore realtime updates if user is authenticated with Firebase Auth
+    if (!auth.currentUser) {
+      setFees(INITIAL_FEES as Fee[]);
+      setChildren(INITIAL_CHILDREN);
+      setRooms(INITIAL_ROOMS);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     // 1. Fees
     const feesQuery = query(collection(db, 'fees'), orderBy('dueDate', 'desc'));
     const unsubFees = onSnapshot(feesQuery, (snap) => {
       const data: Fee[] = [];
       snap.forEach((d) => data.push({ id: d.id, ...d.data() } as Fee));
-      setFees(data);
+      if (data.length > 0) {
+        setFees(data);
+      }
       setLoading(false);
     }, (err) => {
-      console.warn('Error loading fees snapshot:', err);
+      console.warn('Could not load fees from Firestore, using initial dataset:', err);
+      setFees(INITIAL_FEES as Fee[]);
       setLoading(false);
     });
 
@@ -136,25 +158,32 @@ export function FeesManagement() {
       snap.forEach((d) => data.push({ id: d.id, ...d.data() } as Payment));
       setPayments(data);
     }, (err) => {
-      console.warn('Error loading payments snapshot:', err);
+      console.warn('Could not load payments snapshot:', err);
     });
 
     // 3. Children
     const unsubChildren = onSnapshot(collection(db, 'children'), (snap) => {
       const data: Child[] = [];
       snap.forEach((d) => data.push({ id: d.id, ...d.data() } as Child));
-      setChildren(data);
+      if (data.length > 0) {
+        setChildren(data);
+      }
+    }, (err) => {
+      console.warn('Could not load children snapshot, using initial dataset:', err);
+      setChildren(INITIAL_CHILDREN);
     });
 
     // 4. Rooms
     const unsubRooms = onSnapshot(collection(db, 'rooms'), (snap) => {
       const data: Room[] = [];
       snap.forEach((d) => data.push({ id: d.id, ...d.data() } as Room));
-      setRooms(data);
+      if (data.length > 0) {
+        setRooms(data);
+      }
+    }, (err) => {
+      console.warn('Could not load rooms snapshot, using initial dataset:', err);
+      setRooms(INITIAL_ROOMS);
     });
-
-    // 5. Check MP Status
-    checkMp();
 
     return () => {
       unsubFees();
@@ -162,7 +191,7 @@ export function FeesManagement() {
       unsubChildren();
       unsubRooms();
     };
-  }, []);
+  }, [currentUser]);
 
   const checkMp = async () => {
     setMpChecking(true);
@@ -334,31 +363,31 @@ export function FeesManagement() {
     switch (status) {
       case 'paid':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          <span className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full text-xs md:text-sm font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
             <CheckCircle2 className="w-3.5 h-3.5" /> Abonada
           </span>
         );
       case 'in_review':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">
+          <span className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full text-xs md:text-sm font-semibold bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">
             <Clock className="w-3.5 h-3.5" /> En Revisión
           </span>
         );
       case 'overdue':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
+          <span className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full text-xs md:text-sm font-semibold bg-red-100 text-red-800 border border-red-200">
             <AlertCircle className="w-3.5 h-3.5" /> Vencida
           </span>
         );
       case 'cancelled':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+          <span className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full text-xs md:text-sm font-semibold bg-gray-100 text-gray-700 border border-gray-200">
             Cancelada
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+          <span className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full text-xs md:text-sm font-semibold bg-blue-100 text-blue-800 border border-blue-200">
             <Clock className="w-3.5 h-3.5" /> Pendiente
           </span>
         );

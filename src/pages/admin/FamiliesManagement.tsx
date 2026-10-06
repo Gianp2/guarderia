@@ -18,6 +18,7 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { Family, Child } from '../../types';
 import { INITIAL_FAMILIES, INITIAL_CHILDREN } from '../../services/seedData';
+import { dataService } from '../../services/dataService';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
@@ -25,7 +26,7 @@ import { Modal } from '../../components/common/Modal';
 export const FamiliesManagement: React.FC = () => {
   const toast = useToast();
   const [families, setFamilies] = useState<Family[]>(INITIAL_FAMILIES);
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
+  const [childrenList, setChildrenList] = useState<Child[]>(() => dataService.getChildren());
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFamily, setEditingFamily] = useState<Family | null>(null);
@@ -46,6 +47,12 @@ export const FamiliesManagement: React.FC = () => {
   });
 
   useEffect(() => {
+    setChildrenList(dataService.getChildren());
+
+    const unsubChildren = dataService.subscribe('children', () => {
+      setChildrenList(dataService.getChildren());
+    });
+
     const fetchData = async () => {
       if (!auth?.currentUser) return;
       try {
@@ -68,6 +75,10 @@ export const FamiliesManagement: React.FC = () => {
       }
     };
     fetchData();
+
+    return () => {
+      unsubChildren();
+    };
   }, []);
 
   const handleOpenCreate = () => {

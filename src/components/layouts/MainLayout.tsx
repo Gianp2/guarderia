@@ -1,19 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Outlet, useLocation, NavLink } from 'react-router-dom';
 import { Sidebar } from '../common/Sidebar';
 import { Header } from '../common/Header';
 import { 
   LayoutDashboard, 
   CalendarCheck2, 
-  BookOpen, 
+  DoorClosed, 
   Baby,
   Heart,
-  CreditCard
+  CreditCard,
+  BookOpen
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const MainLayout: React.FC = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { role, userProfile } = useAuth();
 
@@ -41,9 +41,9 @@ export const MainLayout: React.FC = () => {
       return [
         { to: '/admin', label: 'Inicio', icon: LayoutDashboard },
         { to: '/admin/ninos', label: 'Niños', icon: Baby },
+        { to: '/admin/salas', label: 'Salas', icon: DoorClosed },
         { to: '/admin/cuotas', label: 'Cuotas', icon: CreditCard },
         { to: '/asistencia', label: 'Asistencia', icon: CalendarCheck2 },
-        { to: '/actividades', label: 'Bitácora', icon: BookOpen },
       ];
     }
     if (role === 'teacher') {
@@ -65,26 +65,29 @@ export const MainLayout: React.FC = () => {
 
   const mobileNavItems = getMobileNavItems();
 
+  React.useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }, [location.pathname]);
+
   return (
     <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-[#FBFBFA] flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
-      {/* Sidebar for desktop and mobile drawer */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {/* Desktop Persistent Sidebar */}
+      <Sidebar />
 
       {/* Main Content Area */}
       <div className="lg:pl-68 flex flex-col min-h-screen w-full max-w-full overflow-x-hidden">
-        <Header 
-          onToggleSidebar={() => setSidebarOpen(true)} 
-          title={title} 
-        />
+        <Header title={title} />
 
-        <main className="flex-1 px-4 sm:px-8 pt-20 sm:pt-24 pb-24 lg:pb-8 max-w-7xl w-full mx-auto overflow-x-hidden">
-          <div key={location.pathname} className="animate-page-enter">
+        <main className="flex-1 px-3.5 sm:px-6 lg:px-8 pt-24 sm:pt-28 lg:pt-30 pb-20 lg:pb-12 max-w-7xl w-full mx-auto overflow-x-hidden">
+          <div key={location.pathname} className="animate-page-enter pt-2 sm:pt-3">
             <Outlet />
           </div>
         </main>
 
         {/* Compact Mobile Bottom Navigation Bar with Glassmorphism */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white/85 backdrop-blur-md border-t border-[#E9ECEF] z-30 px-2 py-1.5 flex items-center justify-around shadow-lg transition-all duration-200">
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white/90 backdrop-blur-md border-t border-[#E9ECEF] z-30 px-2 py-1.5 flex items-center justify-around shadow-lg transition-all duration-200">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
             return (

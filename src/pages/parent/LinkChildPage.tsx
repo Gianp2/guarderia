@@ -8,7 +8,6 @@ import {
   ShieldCheck, 
   ArrowRight,
   ArrowLeft,
-  Sparkles,
   Users
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -191,7 +190,7 @@ export const LinkChildPage: React.FC = () => {
           {!successChild && (
             <div className="mt-5 pt-4 border-t border-gray-100">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-[#52796F]" />
+                <KeyRound className="w-3.5 h-3.5 text-[#52796F]" />
                 <span>Códigos oficiales disponibles para probar:</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-left">

@@ -6,7 +6,7 @@ import {
   Calendar, 
   Utensils, 
   Moon, 
-  Sparkles, 
+  Award, 
   Smile, 
   Bell, 
   Baby, 
@@ -23,6 +23,8 @@ import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore'
 import { db, auth } from '../../services/firebase/config';
 import { Activity, ActivityCategory, Child, Room } from '../../types';
 import { INITIAL_ACTIVITIES, INITIAL_CHILDREN, INITIAL_ROOMS } from '../../services/seedData';
+import { dataService } from '../../services/dataService';
+import { pushNotificationService } from '../../services/pushNotificationService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
@@ -31,9 +33,9 @@ import { Modal } from '../../components/common/Modal';
 export const ActivitiesPage: React.FC = () => {
   const { role, userProfile } = useAuth();
   const toast = useToast();
-  const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
-  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const [activities, setActivities] = useState<Activity[]>(() => dataService.getActivities());
+  const [childrenList, setChildrenList] = useState<Child[]>(() => dataService.getChildren());
+  const [rooms, setRooms] = useState<Room[]>(() => dataService.getRooms());
   
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -54,26 +56,34 @@ export const ActivitiesPage: React.FC = () => {
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     roomId: 'room-cuna',
-    childIds: []
+    childIds: [],
+    isImportant: false
   });
 
   const canCreate = role === 'admin' || role === 'teacher';
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!auth?.currentUser) return;
-      try {
-        const snap = await getDocs(collection(db, 'activities')).catch(() => null);
-        if (snap && !snap.empty) {
-          const list: Activity[] = [];
-          snap.forEach(d => list.push(d.data() as Activity));
-          setActivities(list);
-        }
-      } catch (err) {
-        console.warn('Using seeded activities:', err);
-      }
+    // Sync with central data store and listen for live updates
+    setActivities(dataService.getActivities());
+    setChildrenList(dataService.getChildren());
+    setRooms(dataService.getRooms());
+
+    const unsub = dataService.subscribe('activities', () => {
+      setActivities(dataService.getActivities());
+    });
+    const unsubChildren = dataService.subscribe('children', () => {
+      setChildrenList(dataService.getChildren());
+    });
+    const unsubRooms = dataService.subscribe('rooms', () => {
+      setRooms(dataService.getRooms());
+    });
+
+    dataService.syncFromFirestore();
+    return () => {
+      unsub();
+      unsubChildren();
+      unsubRooms();
     };
-    fetchData();
   }, []);
 
   const getCategoryDetails = (cat: ActivityCategory) => {
@@ -83,7 +93,7 @@ export const ActivitiesPage: React.FC = () => {
       case 'nap':
         return { label: 'Descanso / Siesta', icon: Moon, variant: 'purple' as const };
       case 'milestone':
-        return { label: 'Hito Pedagógico', icon: Sparkles, variant: 'green' as const };
+        return { label: 'Hito Pedagógico', icon: Award, variant: 'green' as const };
       case 'hygiene':
         return { label: 'Higiene y Mudas', icon: Smile, variant: 'blue' as const };
       default:
@@ -101,7 +111,8 @@ export const ActivitiesPage: React.FC = () => {
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       roomId: rooms[0]?.id || 'room-cuna',
-      childIds: []
+      childIds: [],
+      isImportant: false
     });
     setIsModalOpen(true);
   };
@@ -117,7 +128,8 @@ export const ActivitiesPage: React.FC = () => {
       date: act.date,
       time: act.time,
       roomId: act.roomId,
-      childIds: act.childIds || []
+      childIds: act.childIds || [],
+      isImportant: !!act.isImportant
     });
     setIsModalOpen(true);
   };
@@ -126,16 +138,14 @@ export const ActivitiesPage: React.FC = () => {
     if (e) e.stopPropagation();
     const actToDelete = activities.find(a => a.id === id);
     if (!confirm('¿Confirma que desea eliminar esta actividad?')) return;
-    setActivities(prev => prev.filter(a => a.id !== id));
+    
+    await dataService.deleteActivity(id);
+    setActivities(dataService.getActivities());
+
     if (selectedCardActivity?.id === id) {
       setSelectedCardActivity(null);
     }
     toast.info('Actividad eliminada', actToDelete ? `"${actToDelete.title}" fue eliminada del registro` : 'El registro ha sido eliminado');
-    try {
-      await deleteDoc(doc(db, 'activities', id));
-    } catch (err) {
-      console.warn('Deleted locally:', err);
-    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -159,21 +169,18 @@ export const ActivitiesPage: React.FC = () => {
         roomId: formData.roomId || editingActivity.roomId,
         roomName: assignedRoom?.name || editingActivity.roomName,
         childIds: formData.childIds || editingActivity.childIds,
+        isImportant: !!formData.isImportant,
         updatedAt: new Date().toISOString()
       };
 
-      setActivities(prev => prev.map(a => a.id === editingActivity.id ? updatedRecord : a));
+      await dataService.saveActivity(updatedRecord);
+      setActivities(dataService.getActivities());
+
       if (selectedCardActivity?.id === editingActivity.id) {
         setSelectedCardActivity(updatedRecord);
       }
 
       toast.success('Actividad actualizada', `"${updatedRecord.title}" modificada con éxito`);
-
-      try {
-        await setDoc(doc(db, 'activities', editingActivity.id), updatedRecord, { merge: true });
-      } catch (err) {
-        console.warn('Persisted locally:', err);
-      }
     } else {
       const id = `act-${Date.now()}`;
       const newRecord: Activity = {
@@ -186,21 +193,20 @@ export const ActivitiesPage: React.FC = () => {
         roomId: formData.roomId || 'room-cuna',
         roomName: assignedRoom?.name || 'Sala',
         childIds: formData.childIds || [],
+        isImportant: !!formData.isImportant,
         authorUserId: userProfile?.id || 'admin',
         authorName: userProfile?.displayName || 'Educadora',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      setActivities(prev => [newRecord, ...prev]);
+      await dataService.saveActivity(newRecord);
+      setActivities(dataService.getActivities());
+
+      // Disparar notificación push instantánea a familias vía Service Worker
+      pushNotificationService.notifyNewActivity(newRecord).catch(() => {});
 
       toast.success('Actividad registrada', `"${newRecord.title}" guardada para ${newRecord.roomName}`);
-
-      try {
-        await setDoc(doc(db, 'activities', id), newRecord);
-      } catch (err) {
-        console.warn('Persisted locally:', err);
-      }
     }
 
     setSaveSuccess(true);
@@ -215,7 +221,8 @@ export const ActivitiesPage: React.FC = () => {
         date: new Date().toISOString().split('T')[0],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         roomId: 'room-cuna',
-        childIds: []
+        childIds: [],
+        isImportant: false
       });
     }, 900);
   };
@@ -228,7 +235,7 @@ export const ActivitiesPage: React.FC = () => {
     // Parent restriction: see records for their child or general for their child's room
     if (role === 'parent') {
       const linkedIds = userProfile?.linkedChildIds ?? ['child-mateo'];
-      const myChildren = INITIAL_CHILDREN.filter(c => linkedIds.includes(c.id));
+      const myChildren = childrenList.filter(c => linkedIds.includes(c.id));
       const parentRoomIds = myChildren.map(c => c.roomId);
 
       const isForMyChild = !act.childIds || act.childIds.length === 0 || act.childIds.some(cid => linkedIds.includes(cid));
@@ -264,10 +271,10 @@ export const ActivitiesPage: React.FC = () => {
 
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-3xl border border-[#E9ECEF] shadow-2xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex flex-wrap gap-2 text-xs md:text-sm">
           <button
             onClick={() => setCategoryFilter('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
               categoryFilter === 'all'
                 ? 'bg-[#1B4332] text-white shadow-xs'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -277,7 +284,7 @@ export const ActivitiesPage: React.FC = () => {
           </button>
           <button
             onClick={() => setCategoryFilter('activity')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
               categoryFilter === 'activity'
                 ? 'bg-[#1B4332] text-white shadow-xs'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -287,7 +294,7 @@ export const ActivitiesPage: React.FC = () => {
           </button>
           <button
             onClick={() => setCategoryFilter('meal')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
               categoryFilter === 'meal'
                 ? 'bg-[#1B4332] text-white shadow-xs'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -297,7 +304,7 @@ export const ActivitiesPage: React.FC = () => {
           </button>
           <button
             onClick={() => setCategoryFilter('nap')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
               categoryFilter === 'nap'
                 ? 'bg-[#1B4332] text-white shadow-xs'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -312,7 +319,7 @@ export const ActivitiesPage: React.FC = () => {
           <select
             value={roomFilter}
             onChange={(e) => setRoomFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 focus:ring-2 focus:ring-[#52796F]"
+            className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs md:text-sm font-medium text-gray-700 focus:ring-2 focus:ring-[#52796F]"
           >
             <option value="all">Todas las salas</option>
             {rooms.map(r => (
@@ -352,8 +359,14 @@ export const ActivitiesPage: React.FC = () => {
                     <span className="text-xs font-semibold text-[#52796F]">
                       {act.roomName || 'Sala'}
                     </span>
+                    {act.isImportant && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                        <AlertCircle className="w-3 h-3 text-amber-700" />
+                        <span>Importante</span>
+                      </span>
+                    )}
                     {targetChild && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#245436] bg-[#EBF3ED] px-2 py-0.5 rounded-full border border-[#D1E4D7]">
+                      <span className="inline-flex flex-wrap items-center gap-2 text-xs md:text-sm font-semibold text-[#245436] bg-[#EBF3ED] px-2.5 py-0.5 rounded-full border border-[#D1E4D7]">
                         <Baby className="w-3 h-3" />
                         <span>{targetChild.firstName} {targetChild.lastName}</span>
                       </span>
@@ -425,7 +438,7 @@ export const ActivitiesPage: React.FC = () => {
             <h4 className="text-base font-bold text-[#1B4332]">Publicado con éxito</h4>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-4">
+          <form onSubmit={handleSave} className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
             {formError && (
               <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
@@ -525,6 +538,17 @@ export const ActivitiesPage: React.FC = () => {
               />
             </div>
 
+            {/* Checkbox Importante */}
+            <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs font-semibold text-amber-900">
+              <input
+                type="checkbox"
+                checked={!!formData.isImportant}
+                onChange={(e) => setFormData({ ...formData, isImportant: e.target.checked })}
+                className="w-4 h-4 rounded text-[#1B4332] focus:ring-[#52796F]"
+              />
+              <span>Marcar como importante (destacar aviso para las familias)</span>
+            </label>
+
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
               <button
                 type="button"
@@ -554,7 +578,7 @@ export const ActivitiesPage: React.FC = () => {
         maxWidth="md"
       >
         {selectedCardActivity && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1 text-xs md:text-sm">
             <div className="flex items-center gap-2">
               <Badge variant={getCategoryDetails(selectedCardActivity.category).variant} size="sm">
                 {getCategoryDetails(selectedCardActivity.category).label}
@@ -562,6 +586,12 @@ export const ActivitiesPage: React.FC = () => {
               <span className="text-xs text-[#52796F] font-semibold">
                 {selectedCardActivity.roomName || 'Sala general'}
               </span>
+              {selectedCardActivity.isImportant && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                  <AlertCircle className="w-3 h-3 text-amber-700" />
+                  <span>Importante</span>
+                </span>
+              )}
             </div>
 
             <div className="p-4 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1]">

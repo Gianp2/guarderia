@@ -65,14 +65,14 @@ export const Modal: React.FC<ModalProps> = ({
         aria-hidden="true"
       />
 
-      {/* Centering Wrapper: min-h-full flex items-center justify-center ensures perfect horizontal and vertical centering */}
+      {/* Centering Wrapper: outer backdrop flex items-center justify-center p-4 */}
       <div 
-        className="flex min-h-full items-center justify-center p-3 sm:p-6 text-center"
+        className="flex min-h-full items-center justify-center p-4 text-center"
         onClick={onClose}
       >
         {/* Modal Dialog Card */}
         <div 
-          className={`relative z-10 w-full ${maxWidthClasses[maxWidth]} my-auto transform overflow-hidden rounded-2xl sm:rounded-3xl bg-white text-left shadow-2xl border border-[#E9ECEF] transition-all flex flex-col max-h-[88vh] sm:max-h-[85vh]`}
+          className={`relative z-10 w-full ${maxWidthClasses[maxWidth]} my-auto transform overflow-hidden rounded-2xl sm:rounded-3xl bg-white text-left shadow-2xl border border-[#E9ECEF] transition-all flex flex-col max-h-[85vh]`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header - Glass style, clean and sticky */}
@@ -93,8 +93,8 @@ export const Modal: React.FC<ModalProps> = ({
             </button>
           </div>
 
-          {/* Content - allows scroll inside modal only, perfectly padded and contained */}
-          <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain flex-1">
+          {/* Inner Container - max-h-[85vh] overflow-y-auto */}
+          <div className="p-4 sm:p-6 max-h-[85vh] overflow-y-auto overscroll-contain flex-1">
             {children}
           </div>
         </div>

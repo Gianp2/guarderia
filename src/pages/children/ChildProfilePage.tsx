@@ -5,7 +5,6 @@ import {
   Calendar, 
   Clock, 
   Heart, 
-  Sparkles, 
   ShieldCheck, 
   AlertCircle, 
   CheckCircle2, 
@@ -32,6 +31,7 @@ import {
   INITIAL_FAMILIES,
   INITIAL_ROOMS
 } from '../../services/seedData';
+import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Badge } from '../../components/common/Badge';
@@ -97,20 +97,61 @@ export const ChildProfilePage: React.FC = () => {
 
   useEffect(() => {
     const childId = id || 'child-mateo';
-    const found = INITIAL_CHILDREN.find(c => c.id === childId) || INITIAL_CHILDREN[0];
+    const allChildren = dataService.getChildren();
+    const found = allChildren.find(c => c.id === childId) || allChildren[0];
     setChild(found);
 
-    const childActivities = INITIAL_ACTIVITIES.filter(a => 
-      a.roomId === found.roomId && (!a.childIds || a.childIds.length === 0 || a.childIds.includes(found.id))
-    );
-    setActivities(childActivities);
+    const updateChildData = (currentChild: Child) => {
+      const childActivities = dataService.getActivities().filter(a => 
+        a.roomId === currentChild.roomId && (!a.childIds || a.childIds.length === 0 || a.childIds.includes(currentChild.id))
+      );
+      setActivities(childActivities);
 
-    const childReports = INITIAL_PROGRESS_REPORTS.filter(r => r.childId === found.id);
-    setProgressReports(childReports);
+      const childReports = dataService.getProgressReports().filter(r => r.childId === currentChild.id);
+      setProgressReports(childReports);
 
-    const childAtt = INITIAL_ATTENDANCE.filter(att => att.childId === found.id);
-    setAttendance(childAtt);
+      const childAtt = dataService.getAttendance().filter(att => att.childId === currentChild.id);
+      setAttendance(childAtt);
+    };
+
+    if (found) {
+      updateChildData(found);
+    }
+
+    const unsubChildren = dataService.subscribe('children', () => {
+      const updatedChildren = dataService.getChildren();
+      const updatedFound = updatedChildren.find(c => c.id === childId) || updatedChildren[0];
+      if (updatedFound) {
+        setChild(updatedFound);
+        updateChildData(updatedFound);
+      }
+    });
+
+    const unsubActivities = dataService.subscribe('activities', () => {
+      if (found) updateChildData(found);
+    });
+
+    const unsubAttendance = dataService.subscribe('attendance', () => {
+      if (found) updateChildData(found);
+    });
+
+    const unsubReports = dataService.subscribe('reports', () => {
+      if (found) updateChildData(found);
+    });
+
+    dataService.syncFromFirestore();
+
+    return () => {
+      unsubChildren();
+      unsubActivities();
+      unsubAttendance();
+      unsubReports();
+    };
   }, [id]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activeTab, id]);
 
   // --- 1. CHILD EDIT HANDLERS ---
   const handleOpenEditChild = () => {
@@ -149,6 +190,7 @@ export const ChildProfilePage: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
     setChild(updated);
+    await dataService.saveChild(updated);
     toast.success(
       'Expediente actualizado',
       `Ficha médica y datos personales de ${updated.firstName} guardados correctamente`
@@ -235,6 +277,7 @@ export const ChildProfilePage: React.FC = () => {
       };
 
       setProgressReports(prev => [newReport, ...prev]);
+      await dataService.saveProgressReport(newReport);
 
       try {
         await setDoc(doc(db, 'progressReports', repId), newReport);
@@ -265,7 +308,8 @@ export const ChildProfilePage: React.FC = () => {
       description: act.description,
       category: act.category,
       time: act.time,
-      date: act.date
+      date: act.date,
+      isImportant: !!act.isImportant
     });
     setIsActivityModalOpen(true);
   };
@@ -280,9 +324,11 @@ export const ChildProfilePage: React.FC = () => {
       category: (activityForm.category as any) || editingActivity.category,
       time: activityForm.time || editingActivity.time,
       date: activityForm.date || editingActivity.date,
+      isImportant: !!activityForm.isImportant,
       updatedAt: new Date().toISOString()
     };
     setActivities(prev => prev.map(a => a.id === editingActivity.id ? updated : a));
+    await dataService.saveActivity(updated);
     toast.success('Actividad actualizada', `"${updated.title}" modificada correctamente`);
     try {
       await setDoc(doc(db, 'activities', editingActivity.id), updated, { merge: true });
@@ -322,6 +368,7 @@ export const ChildProfilePage: React.FC = () => {
       updatedAt: new Date().toISOString()
     };
     setAttendance(prev => prev.map(a => a.id === editingAttendance.id ? updated : a));
+    await dataService.saveAttendance(updated);
     const statusLabel = 
       updated.status === 'present' ? 'Presente' :
       updated.status === 'absent' ? 'Ausente' : 'Justificado';
@@ -368,7 +415,7 @@ export const ChildProfilePage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Back button & Breadcrumb */}
       <div className="flex items-center justify-between">
         <Link
@@ -381,7 +428,7 @@ export const ChildProfilePage: React.FC = () => {
       </div>
 
       {/* Child Header Card */}
-      <div className="bg-white rounded-3xl border border-[#E9ECEF] p-4 sm:p-8 shadow-xs flex flex-col md:flex-row items-center md:items-center justify-between gap-5 sm:gap-6 text-center sm:text-left overflow-hidden">
+      <div className="bg-white rounded-2xl border border-[#E9ECEF] p-4 sm:p-6 shadow-xs flex flex-col md:flex-row items-center md:items-center justify-between gap-4 text-center sm:text-left overflow-hidden">
         <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 min-w-0 w-full sm:w-auto">
           <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-3xl bg-[#EBF3ED] text-[#245436] flex items-center justify-center font-black text-xl sm:text-3xl border-2 border-[#D1E4D7] shadow-xs shrink-0">
             {child.firstName[0]}{child.lastName[0]}
@@ -492,6 +539,12 @@ export const ChildProfilePage: React.FC = () => {
                   subtitle: `Actividad Diaria • ${act.time} hs • Registrado por: ${act.authorName}`,
                   content: (
                     <div className="space-y-4 text-xs">
+                      {act.isImportant && (
+                        <div className="p-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                          <span>Aviso marcado como Importante por la educadora</span>
+                        </div>
+                      )}
                       <div className="p-4 rounded-2xl bg-[#FAF9F5] border border-[#F0ECE1]">
                         <h4 className="text-sm font-bold text-[#1B4332] mb-1">{act.title}</h4>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-line">{act.description}</p>
@@ -516,7 +569,15 @@ export const ChildProfilePage: React.FC = () => {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-[#1B4332] group-hover:text-[#52796F] transition-colors">{act.title}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#1B4332] group-hover:text-[#52796F] transition-colors">{act.title}</span>
+                      {act.isImportant && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                          <AlertCircle className="w-2.5 h-2.5 text-amber-700" />
+                          <span>Importante</span>
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-mono text-gray-400">{act.time} hs</span>
                       {canEditPedagogical && (
@@ -1069,6 +1130,17 @@ export const ChildProfilePage: React.FC = () => {
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-2 focus:ring-[#52796F]"
               />
             </div>
+
+            {/* Checkbox Importante */}
+            <label className="flex items-center gap-2 cursor-pointer p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs font-semibold text-amber-900">
+              <input
+                type="checkbox"
+                checked={!!activityForm.isImportant}
+                onChange={(e) => setActivityForm({ ...activityForm, isImportant: e.target.checked })}
+                className="w-4 h-4 rounded text-[#1B4332] focus:ring-[#52796F]"
+              />
+              <span>Marcar como importante (destacar aviso para la familia)</span>
+            </label>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
               <button
